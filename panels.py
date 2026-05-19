@@ -137,13 +137,6 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
                 icon='ERROR' if is_err else 'TIME',
             )
 
-        # --- Hint: text encoder ---
-        if not running:
-            layout.separator(factor=0.5)
-            box = layout.box()
-            box.label(text="Tip: GPU < 16 GB VRAM?", icon='INFO')
-            box.label(text="Run first:  kimodo_textencoder --device cpu")
-            box.label(text="This offloads the text encoder to CPU.")
 
         # --- Delete venv (always shown when installed) ---
         if so.is_installed() and not so.is_installing():
@@ -614,10 +607,6 @@ class KIMODO_PT_Help(KIMODO_PanelBase, Panel):
         col.label(text="6. If it does not match, manually add your control bones")
         col.label(text="7. Click Apply Constraints")
         col.label(text="8. Bake when satisfied")
-        col.separator()
-        col.label(text="Low VRAM? Run separately while having the Kimodo virtual environment activated:", icon='INFO')
-        col.label(text="  while in kimodo folder: \"source venv/bin/activate\"")
-        col.label(text="  kimodo_textencoder --device cpu")
         col.separator()
         col.label(text="Docs & Source:", icon='URL')
         col.label(text="github.com/nv-tlabs/kimodo")
