@@ -257,11 +257,17 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
         reuse_row.prop(s, "reuse_armature", text="Reuse", icon='ARMATURE_DATA')
         reuse_row.operator("kimodo.pick_latest_armature", text="", icon='SORTTIME')
 
+        # Transition frames control
+        trans_row = layout.row(align=True)
+        trans_row.enabled = s.is_connected and not s.is_generating
+        trans_row.label(text="Transition Frames:")
+        trans_row.prop(s, "num_transition_frames", text="")
+
         gen_row = layout.row(align=True)
         gen_row.enabled = s.is_connected and not s.is_generating
         #gen_row.operator("kimodo.generate_segment",      text="Generate Selected", icon='PLAY')
         #use tpose button below
-        
+
         gen_row.scale_y = 2
         gen_row.operator("kimodo.generate_all_segments", text="Generate Motion",icon='PLAY')
 
@@ -349,6 +355,53 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
                 layout.label(text=s.generation_progress,
                              icon='CHECKMARK' if "Done" in s.generation_progress else 'ERROR')
 
+        # --- Generate N Variations ---
+        layout.separator()
+        var_row = layout.row(align=True)
+        var_row.enabled = s.is_connected and not s.is_generating
+        var_row.prop(s, "num_variations", text="Variations")
+        var_row.operator(
+            "kimodo.generate_variations",
+            text=f"Generate {s.num_variations} Variations",
+            icon='DUPLICATE',
+        )
+
+        # --- Generation History ---
+        layout.separator()
+        hist_header = layout.row(align=True)
+        hist_header.prop(
+            s, "history_expanded",
+            icon='DISCLOSURE_TRI_DOWN' if s.history_expanded else 'DISCLOSURE_TRI_RIGHT',
+            icon_only=True, emboss=False,
+        )
+        hist_header.label(
+            text=f"History ({len(s.generation_history)})", icon='TIME'
+        )
+        if s.history_expanded:
+            if not s.generation_history:
+                layout.label(text="No generations yet.", icon='INFO')
+            else:
+                layout.template_list(
+                    "KIMODO_UL_History", "",
+                    s, "generation_history",
+                    s, "history_index",
+                    rows=min(len(s.generation_history), 5),
+                )
+                if 0 <= s.history_index < len(s.generation_history):
+                    entry = s.generation_history[s.history_index]
+                    detail = layout.box()
+                    detail.label(text=entry.prompt, icon='TEXT')
+                    detail.label(
+                        text=f"Seed: {entry.seed}  |  {entry.duration:.1f}s  |  {entry.timestamp}"
+                    )
+                    op_row = detail.row(align=True)
+                    reimport_op = op_row.operator(
+                        "kimodo.reimport_from_history",
+                        text="Re-import BVH", icon='IMPORT',
+                    )
+                    reimport_op.index = s.history_index
+            layout.operator("kimodo.clear_history", text="Clear History", icon='TRASH')
+
         # Manual import fallback
         layout.separator()
         box = layout.box()
@@ -394,6 +447,22 @@ class KIMODO_PT_Constraints(KIMODO_PanelBase, Panel):
             tip.label(text="Full-Body tip:", icon='INFO')
             tip.label(text="Select an armature first, then click Full-Body.")
             tip.label(text="Or generate once — source arm will be duplicated.")
+
+        # --- Curve path waypoint sampler ---
+        layout.separator()
+        path_box = layout.box()
+        path_box.label(text="Sample Curve as Waypoints", icon='CURVE_DATA')
+        path_box.prop(s, "path_curve", text="Curve")
+        if s.path_curve:
+            prow = path_box.row(align=True)
+            prow.prop(s, "path_waypoints", text="Points")
+            prow.prop(s, "path_start_frame", text="Start F")
+            prow.prop(s, "path_end_frame", text="End F")
+            path_box.operator(
+                "kimodo.sample_curve_as_waypoints",
+                text=f"Sample {s.path_waypoints} Waypoints",
+                icon='NORMALIZE_FCURVES',
+            )
 
         layout.separator()
         n = len(s.motion_constraints)

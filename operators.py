@@ -35,6 +35,27 @@ def _reset_state():
                               success=False, result="", progress="")
 
 
+_HISTORY_MAX = 20
+
+
+def _push_history(s, prompt: str, seed: int, duration: float, bvh_path: str) -> None:
+    """Prepend a new entry to generation_history, keeping newest-first, capped at _HISTORY_MAX."""
+    import datetime
+    entry = s.generation_history.add()
+    entry.prompt    = prompt
+    entry.seed      = seed
+    entry.duration  = duration
+    entry.bvh_path  = bvh_path
+    entry.timestamp = datetime.datetime.now().isoformat(timespec='seconds')
+    # Move the new item (appended at the end) to index 0
+    last = len(s.generation_history) - 1
+    for i in range(last, 0, -1):
+        s.generation_history.move(i, i - 1)
+    # Trim to max size
+    while len(s.generation_history) > _HISTORY_MAX:
+        s.generation_history.remove(len(s.generation_history) - 1)
+
+
 # ---------------------------------------------------------------------------
 # Bridge start/stop state  (thread → modal operator communication)
 # ---------------------------------------------------------------------------
@@ -189,6 +210,7 @@ class KIMODO_OT_Generate(Operator):
 
         # Resolve seed
         seed = s.seed if s.seed >= 0 else random.randint(0, 2**31)
+        self._resolved_seed = seed
 
         # Launch background thread
         _reset_state()
@@ -256,6 +278,7 @@ class KIMODO_OT_Generate(Operator):
             file_path = _generation_state["result"]
             s.last_bvh_path = file_path
             s.generation_progress = "Done ✓"
+            _push_history(s, s.prompt, self._resolved_seed, s.duration, file_path)
             # Auto-import if BVH
             ext = os.path.splitext(file_path)[1].lower()
             if ext == ".bvh":
@@ -841,8 +864,10 @@ class KIMODO_OT_GenerateSegment(Operator):
         import random as _random
 
         seed = seg.seed if seg.seed >= 0 else _random.randint(0, 2**31)
+        self._resolved_seed = seed
         fps  = context.scene.render.fps / context.scene.render.fps_base
         duration = (seg.end_frame - seg.start_frame + 1) / fps
+        self._segment_duration = duration
 
         # Build constraints for this segment if any exist
         constraints_json = _build_segment_constraints(context, seg)
@@ -907,6 +932,7 @@ class KIMODO_OT_GenerateSegment(Operator):
             seg.last_bvh_path = file_path
             seg.generated = True
             s.generation_progress = "Done ✓"
+            _push_history(s, seg.prompt, self._resolved_seed, self._segment_duration, file_path)
 
             if os.path.splitext(file_path)[1].lower() == ".bvh":
                 bpy.ops.kimodo.import_bvh_at_frame(
@@ -1029,10 +1055,12 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             f"Generating {len(ordered)} segments as multi-prompt sequence…"
         )
 
+        num_transition_frames = s.num_transition_frames
+
         self._thread = threading.Thread(
             target=self._run_all,
             args=(prompts, durations, seed, s.output_format,
-                  constraints_json, s.bvh_standard_tpose),
+                  constraints_json, s.bvh_standard_tpose, num_transition_frames),
             daemon=True,
         )
         self._thread.start()
@@ -1042,7 +1070,8 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
-    def _run_all(self, prompts, durations, seed, fmt, constraints_json, bvh_standard_tpose):
+    def _run_all(self, prompts, durations, seed, fmt, constraints_json, bvh_standard_tpose,
+                 num_transition_frames=5):
         def progress_cb(msg):
             _generation_state["progress"] = msg
 
@@ -1053,6 +1082,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             output_format=fmt,
             constraints_json=constraints_json,
             bvh_standard_tpose=bvh_standard_tpose,
+            num_transition_frames=num_transition_frames,
             progress_callback=progress_cb,
         )
         _generation_state["success"] = success
@@ -1215,6 +1245,103 @@ def _unique_name(base: str) -> str:
     while f"{base}_{i:02d}" in existing:
         i += 1
     return f"{base}_{i:02d}"
+
+
+def _sample_curve_arc_length(curve_obj, n_samples, depsgraph):
+    """Return n_samples evenly arc-length-spaced world-space positions along curve_obj."""
+    evaluated = curve_obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    mw = curve_obj.matrix_world
+
+    verts = [mw @ v.co for v in mesh.vertices]
+    evaluated.to_mesh_clear()
+
+    if len(verts) < 2:
+        return verts
+
+    # Build cumulative arc-length table
+    lengths = [0.0]
+    for i in range(len(verts) - 1):
+        lengths.append(lengths[-1] + (verts[i + 1] - verts[i]).length)
+    total = lengths[-1]
+
+    if total == 0.0:
+        return [verts[0]] * n_samples
+
+    samples = []
+    seg = 0
+    for i in range(n_samples):
+        t = (i / (n_samples - 1)) * total if n_samples > 1 else 0.0
+        while seg < len(lengths) - 2 and lengths[seg + 1] < t:
+            seg += 1
+        seg_len = lengths[seg + 1] - lengths[seg]
+        frac = (t - lengths[seg]) / seg_len if seg_len > 0 else 0.0
+        samples.append(verts[seg].lerp(verts[seg + 1], frac))
+
+    return samples
+
+
+class KIMODO_OT_SampleCurveAsWaypoints(Operator):
+    """Sample a curve into evenly-spaced Root XZ waypoint constraints"""
+    bl_idname  = "kimodo.sample_curve_as_waypoints"
+    bl_label   = "Sample Curve as Waypoints"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        s = context.scene.kimodo
+
+        if not s.path_curve:
+            self.report({'ERROR'}, "Set a curve object in the Path Curve field.")
+            return {'CANCELLED'}
+        if s.path_start_frame >= s.path_end_frame:
+            self.report({'ERROR'}, "Start Frame must be less than End Frame.")
+            return {'CANCELLED'}
+
+        n = s.path_waypoints
+        depsgraph = context.evaluated_depsgraph_get()
+        positions = _sample_curve_arc_length(s.path_curve, n, depsgraph)
+
+        if not positions:
+            self.report({'ERROR'}, "Could not sample any points from the curve.")
+            return {'CANCELLED'}
+
+        start_f = s.path_start_frame
+        end_f   = s.path_end_frame
+        color   = _CONSTRAINT_COLORS_RGBA['root2d']
+
+        saved_active   = context.active_object
+        saved_selected = list(context.selected_objects)
+        bpy.ops.object.select_all(action='DESELECT')
+
+        for i, pos in enumerate(positions):
+            frame = round(start_f + (end_f - start_f) * i / (n - 1)) if n > 1 else start_f
+
+            bpy.ops.object.empty_add(type='ARROWS', location=pos)
+            empty = context.active_object
+            empty.name = _unique_name(f"Kimodo_Path_{i + 1:02d}")
+            empty.color = color
+            empty.show_name = True
+            empty.empty_display_size = 0.15
+            empty["kimodo_constraint"] = True
+            empty["kimodo_type"]       = 'root2d'
+
+            item = s.motion_constraints.add()
+            item.constraint_type = 'root2d'
+            item.frame           = frame
+            item.marker_object   = empty
+            item.enabled         = True
+            item.label           = empty.name
+
+        s.constraint_index = len(s.motion_constraints) - 1
+
+        bpy.ops.object.select_all(action='DESELECT')
+        for o in saved_selected:
+            o.select_set(True)
+        if saved_active:
+            context.view_layer.objects.active = saved_active
+
+        self.report({'INFO'}, f"Added {n} path waypoints (frames {start_f}–{end_f})")
+        return {'FINISHED'}
 
 
 class KIMODO_OT_AddConstraint(Operator):
@@ -1572,6 +1699,193 @@ class KIMODO_OT_PickLatestKimodoArmature(Operator):
 
 
 # ---------------------------------------------------------------------------
+# Generation history operators
+# ---------------------------------------------------------------------------
+
+class KIMODO_OT_ReimportFromHistory(Operator):
+    """Re-import the BVH file from a history entry"""
+    bl_idname = "kimodo.reimport_from_history"
+    bl_label  = "Re-import BVH"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    index: IntProperty(default=0)
+
+    def execute(self, context):
+        s = context.scene.kimodo
+        if not (0 <= self.index < len(s.generation_history)):
+            self.report({'ERROR'}, "Invalid history index.")
+            return {'CANCELLED'}
+        entry = s.generation_history[self.index]
+        if not os.path.isfile(entry.bvh_path):
+            self.report({'ERROR'}, f"BVH file no longer exists: {entry.bvh_path}")
+            return {'CANCELLED'}
+        bpy.ops.kimodo.import_bvh('EXEC_DEFAULT', filepath=entry.bvh_path)
+        self.report({'INFO'}, f"Re-imported '{os.path.basename(entry.bvh_path)}'")
+        return {'FINISHED'}
+
+
+class KIMODO_OT_ClearHistory(Operator):
+    """Clear all generation history entries"""
+    bl_idname = "kimodo.clear_history"
+    bl_label  = "Clear History"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        context.scene.kimodo.generation_history.clear()
+        self.report({'INFO'}, "Generation history cleared.")
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------
+# Generate N Variations operator
+# ---------------------------------------------------------------------------
+
+class KIMODO_OT_GenerateVariations(Operator):
+    """Generate N variations of the current prompt with different random seeds"""
+    bl_idname = "kimodo.generate_variations"
+    bl_label  = "Generate Variations"
+
+    _timer       = None
+    _thread      = None
+    _seeds:  list = []
+    _total:  int  = 0
+    _current_idx: int = 0
+
+    def invoke(self, context, event):
+        s = context.scene.kimodo
+
+        if not sc.is_running():
+            self.report({'WARNING'}, "Kimodo is not running — click 'Start Kimodo' first.")
+            return {'CANCELLED'}
+        if s.is_generating:
+            self.report({'WARNING'}, "Already generating — please wait.")
+            return {'CANCELLED'}
+
+        self._total       = s.num_variations
+        self._seeds       = [random.randint(0, 2**31) for _ in range(self._total)]
+        self._current_idx = 0
+
+        s.is_generating = True
+        _reset_state()
+        _generation_state["running"] = True
+        self._start_next(context, s)
+
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.5, window=context.window)
+        wm.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def _start_next(self, context, s):
+        var_num = self._current_idx + 1
+        seed    = self._seeds[self._current_idx]
+        s.generation_progress = f"Variation {var_num}/{self._total}…"
+
+        _reset_state()
+        _generation_state["running"] = True
+
+        self._thread = threading.Thread(
+            target=self._run_one,
+            args=(s.prompt, s.duration, seed, s.output_format, s.bvh_standard_tpose),
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run_one(self, prompt, duration, seed, fmt, bvh_standard_tpose):
+        def progress_cb(msg):
+            _generation_state["progress"] = msg
+
+        success, result = sc.generate_motion(
+            prompt=prompt,
+            duration=duration,
+            seed=seed,
+            output_format=fmt,
+            constraints_json=None,
+            bvh_standard_tpose=bvh_standard_tpose,
+            progress_callback=progress_cb,
+        )
+        _generation_state["success"] = success
+        _generation_state["result"]  = result
+        _generation_state["done"]    = True
+        _generation_state["running"] = False
+
+    def modal(self, context, event):
+        s = context.scene.kimodo
+
+        if event.type != 'TIMER':
+            return {'PASS_THROUGH'}
+
+        var_num = self._current_idx + 1
+        s.generation_progress = (
+            f"Variation {var_num}/{self._total}: "
+            + _generation_state.get("progress", "")
+        )
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
+        if not _generation_state["done"]:
+            return {'RUNNING_MODAL'}
+
+        # One variation finished
+        seed      = self._seeds[self._current_idx]
+        var_num   = self._current_idx + 1
+
+        if not _generation_state["success"]:
+            context.window_manager.event_timer_remove(self._timer)
+            s.is_generating = False
+            s.generation_progress = f"Variation {var_num} failed ✗"
+            self.report({'ERROR'}, f"Variation {var_num} failed: {_generation_state['result']}")
+            return {'FINISHED'}
+
+        file_path = _generation_state["result"]
+        ext = os.path.splitext(file_path)[1].lower()
+
+        if ext == ".bvh":
+            before = set(bpy.data.objects)
+            bpy.ops.import_anim.bvh(
+                filepath=file_path,
+                axis_forward='-Z', axis_up='Y',
+                target='ARMATURE',
+                global_scale=0.01,
+                frame_start=1,
+                use_fps_scale=False,
+                update_scene_fps=False,
+                update_scene_duration=True,
+                use_cyclic=False,
+                rotate_mode='NATIVE',
+            )
+            after   = set(bpy.data.objects)
+            new_arm = next((o for o in after - before if o.type == 'ARMATURE'), None)
+            if new_arm:
+                new_arm.name = f"Kimodo_Var_{var_num}"
+                new_arm["kimodo_source"]        = True
+                new_arm["kimodo_creation_time"] = time.time()
+
+        _push_history(s, s.prompt, seed, s.duration, file_path)
+
+        self._current_idx += 1
+        if self._current_idx < self._total:
+            self._start_next(context, s)
+            return {'RUNNING_MODAL'}
+
+        # All done
+        context.window_manager.event_timer_remove(self._timer)
+        s.is_generating = False
+        s.generation_progress = f"All {self._total} variations done ✓"
+        self.report({'INFO'}, f"Generated {self._total} variations ✓")
+        return {'FINISHED'}
+
+    def cancel(self, context):
+        context.window_manager.event_timer_remove(self._timer)
+        context.scene.kimodo.is_generating = False
+        context.scene.kimodo.generation_progress = "Cancelled"
+        _generation_state["running"] = False
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -1605,6 +1919,12 @@ _classes = [
     KIMODO_OT_SyncSeeds,
     KIMODO_OT_GenerateSegment,
     KIMODO_OT_GenerateAllSegments,
+    # History operators
+    KIMODO_OT_ReimportFromHistory,
+    KIMODO_OT_ClearHistory,
+    KIMODO_OT_GenerateVariations,
+    # Curve path operator
+    KIMODO_OT_SampleCurveAsWaypoints,
     # Constraint operators
     KIMODO_OT_AddConstraint,
     KIMODO_OT_LinkExistingAsConstraint,

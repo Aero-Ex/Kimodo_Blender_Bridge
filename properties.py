@@ -157,6 +157,19 @@ class KIMODO_ConstraintItem(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
+# Generation history entry
+# ---------------------------------------------------------------------------
+
+class KIMODO_HistoryEntry(PropertyGroup):
+    """One entry in the rolling generation history."""
+    prompt: StringProperty(name="Prompt", default="")
+    seed: IntProperty(name="Seed", default=0)
+    duration: FloatProperty(name="Duration", default=5.0)
+    bvh_path: StringProperty(name="BVH Path", default="")
+    timestamp: StringProperty(name="Timestamp", default="")
+
+
+# ---------------------------------------------------------------------------
 # Bone mapping item (one row in the UIList)
 # ---------------------------------------------------------------------------
 
@@ -341,6 +354,60 @@ class KIMODO_SceneSettings(PropertyGroup):
         default="",
     )
 
+    # --- Multi-segment generation ---
+    num_transition_frames: IntProperty(
+        name="Transition Frames",
+        description="Number of blended frames between segments in multi-prompt generation",
+        default=5,
+        min=1,
+        max=30,
+    )
+
+    # --- Generation history ---
+    generation_history: CollectionProperty(type=KIMODO_HistoryEntry)
+    history_index: IntProperty(name="Active History Entry", default=0)
+    history_expanded: BoolProperty(
+        name="Show History",
+        description="Expand / collapse the generation history list",
+        default=False,
+    )
+
+    # --- Variations ---
+    num_variations: IntProperty(
+        name="Variations",
+        description="Number of random-seed variations to generate",
+        default=3,
+        min=2,
+        max=5,
+    )
+
+    # --- Curve path sampling ---
+    path_curve: PointerProperty(
+        name="Path Curve",
+        description="Bezier or NURBS curve to sample as root XZ waypoints",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.type == 'CURVE',
+    )
+    path_waypoints: IntProperty(
+        name="Waypoints",
+        description="Number of evenly-spaced waypoints to sample from the curve",
+        default=8,
+        min=2,
+        max=30,
+    )
+    path_start_frame: IntProperty(
+        name="Start Frame",
+        description="Timeline frame for the first waypoint",
+        default=1,
+        min=0,
+    )
+    path_end_frame: IntProperty(
+        name="End Frame",
+        description="Timeline frame for the last waypoint",
+        default=90,
+        min=1,
+    )
+
     # Preset name for saving
     preset_name: StringProperty(
         name="Preset Name",
@@ -371,6 +438,7 @@ _classes = [
     KIMODO_MotionSegment,
     KIMODO_ConstraintItem,
     KIMODO_BoneMappingItem,
+    KIMODO_HistoryEntry,
     KIMODO_SceneSettings,
     KIMODO_AddonPreferences,
 ]
