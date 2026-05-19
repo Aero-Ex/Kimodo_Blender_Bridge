@@ -140,6 +140,28 @@ def has_nvidia_gpu() -> bool:
         return False
 
 
+def _max_gpu_compute_capability() -> tuple[int, int]:
+    """Return the highest (major, minor) compute capability across all GPUs, or (0, 0)."""
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5,
+            env=_build_env(),
+        )
+        if r.returncode != 0:
+            return (0, 0)
+        best = (0, 0)
+        for line in r.stdout.strip().splitlines():
+            parts = line.strip().split(".")
+            if len(parts) == 2:
+                cap = (int(parts[0]), int(parts[1]))
+                if cap > best:
+                    best = cap
+        return best
+    except Exception:
+        return (0, 0)
+
+
 def venv_exists() -> bool:
     """True if the venv directory is present (even if install is incomplete)."""
     return os.path.isdir(MANAGED_VENV)
@@ -319,14 +341,27 @@ def _do_install() -> None:
         _run([*_venv_pip(), "install", "--upgrade", "pip"], "Upgrading pip")
 
         # 4 — Install PyTorch.
-        #     cu121 wheels only go up to Python 3.12; Python 3.13+ requires
-        #     PyTorch 2.6+ which is published under the cu124 index.
+        #     Index selection depends on Python version and GPU compute capability:
+        #
+        #     cu128 (PyTorch 2.7+): required for Blackwell GPUs (sm_120, RTX 50xx)
+        #                           also supports Python 3.13
+        #     cu124 (PyTorch 2.6+): required for Python 3.13 on older GPUs
+        #                           supports up to sm_90
+        #     cu121 (PyTorch 2.1+): works for Python ≤3.12, GPUs up to sm_90
         r = subprocess.run(
             [venv_py, "-c", "import sys; print(sys.version_info.minor)"],
             capture_output=True, text=True, timeout=5,
         )
         py_minor = int(r.stdout.strip() or "0")
-        if py_minor >= 13:
+        gpu_cap = _max_gpu_compute_capability()
+        _log(f"Detected GPU compute capability: {gpu_cap[0]}.{gpu_cap[1]}")
+
+        if gpu_cap >= (12, 0):
+            # Blackwell (RTX 50xx / sm_120+): only PyTorch 2.7+ / cu128 has kernels
+            torch_index = "https://download.pytorch.org/whl/cu128"
+            cuda_label = "12.8"
+        elif py_minor >= 13:
+            # Python 3.13 on Ampere/Ada/Hopper: PyTorch 2.6+ / cu124
             torch_index = "https://download.pytorch.org/whl/cu124"
             cuda_label = "12.4"
         else:
