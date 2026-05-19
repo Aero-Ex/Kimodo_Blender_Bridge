@@ -6,7 +6,9 @@ Tested on
 **Blender 5.1 / 4.4**
 
 **Arch Linux RTX 3090 Python 3.12
+
 Windows 11 RTX 1080 Python 3.12
+
 Windows 11 RTX 5070 Python 3.13**
 
 <img width="1237" height="1257" alt="image" src="https://github.com/user-attachments/assets/71a1666d-a460-40eb-af23-1dbb8ab750cb" />
