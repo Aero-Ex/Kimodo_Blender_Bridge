@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.4.0] — 2026-05-19
+
+### Fixed
+
+- **PyTorch install on Python 3.13**: The cu121 index has no Python 3.13 wheels; the installer now detects the Python version and uses cu124 (PyTorch 2.6+) for Python 3.13.
+- **PyTorch install on Blackwell GPUs (RTX 50xx)**: cu121/cu124 wheels only compile kernels for up to sm_90. RTX 50xx cards (sm_120+) caused a `no kernel image is available` CUDA error at runtime. The installer now detects GPU compute capability via `nvidia-smi` and selects cu128 (PyTorch 2.7+) for Blackwell.
+
+### Added
+
+- **Delete Venv button**: A trash icon button now appears at the bottom of the Connection panel after a successful install, so the venv can be wiped and reinstalled from the UI without going to the terminal. A confirmation popup prevents accidental deletion.
+
+### Removed
+
+- **`kimodo_textencoder --device cpu` tip**: The command did not work reliably and Kimodo runs fine on lower-VRAM cards without it.
+
+---
+
 ## [1.3.3] — 2026-05-15
 
 ### Fixed
