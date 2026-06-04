@@ -57,6 +57,8 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
                 box.label(text='Run it, tick "Add Python to PATH".')
                 box.label(text="On Windows: run the installer as Administrator.")
                 box.label(text="Then restart Blender before clicking Retry Install.", icon='ERROR')
+                box.label(text="On Windows, restart your computer (not just Blender)", icon='BLANK1')
+                box.label(text="so the new PATH takes effect.", icon='BLANK1')
                 box.separator(factor=0.3)
                 box.operator("kimodo.open_python_download",
                              text="Download Python 3.12 Installer", icon='URL')

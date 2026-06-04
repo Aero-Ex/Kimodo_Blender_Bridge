@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **UnicodeDecodeError during install**: Subprocesses launched with `text=True` decoded their output strictly, so a single non-UTF-8 byte from a child process (e.g. a `huggingface_hub`/`tqdm` progress bar written in a non-UTF-8 Windows console code page) aborted the whole install with `'utf-8' codec can't decode byte 0xa2`. All subprocess and text-file reads now pin `encoding="utf-8"` with `errors="replace"`.
+
+### Changed
+
+- **Computer restart reminder**: The Python install prompt now tells Windows users to restart their computer (not just Blender) after installing Python 3.12, so the updated PATH takes effect.
+
 ## [1.4.0] — 2026-05-19
 
 ### Fixed
