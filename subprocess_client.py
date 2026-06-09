@@ -78,6 +78,8 @@ def start(python_exe: str, model_name: str, progress_callback=None) -> "tuple[bo
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,      # line-buffered
                 env=_bridge_env(python),
             )

@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.1] — 2026-06-04
+
+### Fixed
+
+- **UnicodeDecodeError during install**: Subprocesses launched with `text=True` decoded their output strictly, so a single non-UTF-8 byte from a child process (e.g. a `huggingface_hub`/`tqdm` progress bar written in a non-UTF-8 Windows console code page) aborted the whole install with `'utf-8' codec can't decode byte 0xa2`. All subprocess and text-file reads now pin `encoding="utf-8"` with `errors="replace"`.
+
+### Changed
+
+- **Computer restart reminder**: The Python install prompt now tells Windows users to restart their computer (not just Blender) after installing Python 3.12, so the updated PATH takes effect.
+
+## [1.5.0] — 2026-05-26
+
+### Added
+
+- **Curve-path following**: Draw any Bezier or NURBS curve in the viewport, pick it in the Motion Constraints panel, set a waypoint count (2–30) and a frame range, then click *Sample N Waypoints*. The curve is evaluated via the depsgraph (modifiers supported) and walked to place evenly arc-length-spaced Empties (`Kimodo_Path_01…N`), each registered as a `root2d` constraint so it flows straight through to Kimodo.
+- **Generate N Variations**: Run the current prompt 2–5 times with random seeds via a sequential modal operator; each result is imported as `Kimodo_Var_N` and recorded in history.
+- **Generation history**: A rolling log (max 20, newest-first) of every generated motion — prompt, seed, duration, BVH path, and timestamp — shown as a collapsible list in the Quick Generate panel with detail view, Re-import BVH, and Clear History actions.
+- **Transition frames control**: `num_transition_frames` (1–30, default 5) is now exposed in the Motion Segments panel to control crossfade sharpness between segments, instead of being hardcoded.
+
 ## [1.4.0] — 2026-05-19
 
 ### Fixed

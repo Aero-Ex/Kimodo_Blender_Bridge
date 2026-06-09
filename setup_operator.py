@@ -145,8 +145,8 @@ def _max_gpu_compute_capability() -> tuple[int, int]:
     try:
         r = subprocess.run(
             ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=5,
-            env=_build_env(),
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=5, env=_build_env(),
         )
         if r.returncode != 0:
             return (0, 0)
@@ -204,7 +204,8 @@ def _find_system_python() -> str:
             r = subprocess.run(
                 [found, "-c",
                  "import sys; v=sys.version_info; print(v.major, v.minor)"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=5,
             )
             parts = r.stdout.strip().split()
             if len(parts) == 2 and int(parts[0]) == 3 and int(parts[1]) >= 10:
@@ -247,6 +248,8 @@ def _run(cmd: list, step: str, env: "dict | None" = None) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
         env=_build_env(env),
     )
@@ -272,7 +275,8 @@ def _find_wrapper(venv_py: str) -> str:
         [venv_py, "-c",
          "import importlib.util; s=importlib.util.find_spec('kimodo'); "
          "print(s.origin if s else '')"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=10,
     )
     origin = r.stdout.strip()
     if not origin:
@@ -295,7 +299,7 @@ def _patch_wrapper(wrapper_path: str, local_dir: str) -> None:
     the model loads from disk.  The Aero-Ex fork uses the literal string
     'path_to_your_Llama_text-encoders' as the user-editable slot.
     """
-    with open(wrapper_path) as f:
+    with open(wrapper_path, encoding="utf-8") as f:
         text = f.read()
 
     if _WRAPPER_PLACEHOLDER not in text:
@@ -306,7 +310,7 @@ def _patch_wrapper(wrapper_path: str, local_dir: str) -> None:
     safe_dir = local_dir.replace("\\", "\\\\")
     patched = text.replace(_WRAPPER_PLACEHOLDER, safe_dir, 1)
 
-    with open(wrapper_path, "w") as f:
+    with open(wrapper_path, "w", encoding="utf-8") as f:
         f.write(patched)
 
 
@@ -350,7 +354,8 @@ def _do_install() -> None:
         #     cu121 (PyTorch 2.1+): works for Python ≤3.12, GPUs up to sm_90
         r = subprocess.run(
             [venv_py, "-c", "import sys; print(sys.version_info.minor)"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=5,
         )
         py_minor = int(r.stdout.strip() or "0")
         gpu_cap = _max_gpu_compute_capability()
@@ -383,7 +388,8 @@ def _do_install() -> None:
         r = subprocess.run(
             [venv_py, "-c",
              "import sys; print(f'cp{sys.version_info.major}{sys.version_info.minor}')"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=5,
         )
         py_tag = r.stdout.strip()  # e.g. "cp312"
 

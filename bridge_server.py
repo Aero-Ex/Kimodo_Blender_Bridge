@@ -79,7 +79,7 @@ def _load_constraints(constraints_json, model):
     if constraints_json:
         try:
             fd, tmp_con = tempfile.mkstemp(suffix=".json", prefix="kimodo_con_")
-            with os.fdopen(fd, "w") as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(constraints_json)
             constraint_lst = load_constraints_lst(tmp_con, model.skeleton)
         except Exception as exc:
