@@ -1,10 +1,17 @@
 # Changelog
 
-## [1.5.1] — 2026-06-04
+## [1.5.1] — 2026-06-09
 
 ### Fixed
 
 - **UnicodeDecodeError during install**: Subprocesses launched with `text=True` decoded their output strictly, so a single non-UTF-8 byte from a child process (e.g. a `huggingface_hub`/`tqdm` progress bar written in a non-UTF-8 Windows console code page) aborted the whole install with `'utf-8' codec can't decode byte 0xa2`. All subprocess and text-file reads now pin `encoding="utf-8"` with `errors="replace"`.
+
+### Added
+
+- **HuggingFace token field**: An optional masked "HF Token" input now appears in the Connection panel before install. Entering a read token from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) removes anonymous rate-limits that could cause model downloads to stall at 0%.
+- **Download progress bar**: A live progress bar is shown in the installing panel during both HuggingFace model downloads, updated from tqdm output in real time.
+- **Download retry with backoff**: Both `snapshot_download` calls (LLM2Vec encoder and SOMA weights) now retry up to 3 times with 15 s / 30 s backoff on failure, with retry messages visible in the install status UI.
+- **Per-request download timeout**: `HF_HUB_DOWNLOAD_TIMEOUT=120` is set for download subprocesses so stalled HTTP connections are killed after 2 minutes instead of hanging forever.
 
 ### Changed
 
