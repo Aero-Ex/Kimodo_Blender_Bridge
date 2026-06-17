@@ -1492,19 +1492,24 @@ class KIMODO_OT_AddConstraint(Operator):
     def _resolve_fullbody_armature(self, context, s, cur_frame):
         """
         Return the armature object to use for a fullbody constraint.
-        Tries: active selection → source_armature duplicate → error.
+
+        Logic:
+        - Case 1: an armature is selected AND active is an armature → use active armature
+        - Case 2: no armature in the selection set → duplicate source_armature for posing
+        - Case 3: otherwise → error
         """
         active = context.active_object
+        has_selected_armature = any(obj.type == 'ARMATURE' for obj in context.selected_objects)
 
-        # Case 1: user has an armature selected — use it as-is
-        if active and active.type == 'ARMATURE':
+        # Case 1: an armature is selected and active is an armature → use active as-is
+        if has_selected_armature and active and active.type == 'ARMATURE':
             self.report({'INFO'},
                 f"Using selected armature '{active.name}' as full-body pose reference. "
                 f"Pose it at frame {cur_frame} to define the keyframe.")
             return active
 
-        # Case 2: source_armature exists → duplicate it for posing
-        if s.source_armature:
+        # Case 2: no armature selected at all → duplicate source_armature for posing
+        if not has_selected_armature and s.source_armature:
             return self._duplicate_source_for_posing(context, s, cur_frame)
 
         # Case 3: nothing to work with
@@ -1513,7 +1518,7 @@ class KIMODO_OT_AddConstraint(Operator):
             "Either: (a) select an armature first, or "
             "(b) generate a motion first so a source armature exists to duplicate.")
         return None
-
+        
     def _duplicate_source_for_posing(self, context, s, cur_frame):
         """Duplicate source_armature and freeze its pose at cur_frame.
 
