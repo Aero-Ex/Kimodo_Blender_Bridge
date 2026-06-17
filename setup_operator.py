@@ -169,6 +169,40 @@ def managed_python() -> str:
     return ""
 
 
+def venv_root_for(python_exe: str) -> str:
+    """Given a python executable inside a venv, return the venv root ('' if none).
+
+    Handles <root>/bin/python3 (POSIX), <root>/Scripts/python.exe (Windows
+    venv) and <root>/python.exe (conda env root).
+    """
+    if not python_exe:
+        return ""
+    d = os.path.dirname(os.path.abspath(python_exe))
+    base = os.path.basename(d).lower()
+    return os.path.dirname(d) if base in ("bin", "scripts") else d
+
+
+def is_kimodo_venv(python_exe: str) -> bool:
+    """True if python_exe points into a completed Kimodo venv.
+
+    Recognises a relocated/copied managed venv by the install sentinel that
+    sits at its root, so detection no longer depends on the hardcoded
+    ~/.kimodo-venv location.
+    """
+    root = venv_root_for(python_exe)
+    return (
+        bool(root)
+        and os.path.isfile(python_exe)
+        and os.path.isfile(os.path.join(root, os.path.basename(_SENTINEL)))
+    )
+
+
+def llmvec_dir_for(python_exe: str) -> str:
+    """Path to the llm2vec model dir relative to the selected venv ('' if none)."""
+    root = venv_root_for(python_exe)
+    return os.path.join(root, os.path.basename(LLMVEC_DIR)) if root else ""
+
+
 # Cached GPU presence — panels call has_nvidia_gpu() from draw(), which runs
 # on every viewport redraw; spawning nvidia-smi there would stall the UI
 # (and flash a console window per redraw on Windows).
