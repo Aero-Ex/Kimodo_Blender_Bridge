@@ -562,7 +562,8 @@ class KIMODO_OT_ApplyRetargeting(Operator):
             self.report({'ERROR'}, "No bone mappings defined. Use Auto-Match or add manually.")
             return {'CANCELLED'}
 
-        pairs = [(item.source_bone, item.target_bone, item.enabled, item.retarget_mode)
+        pairs = [(item.source_bone, item.target_bone, item.enabled,
+                  item.retarget_mode, item.inherit_rotation)
                  for item in s.bone_mappings]
 
         n, warnings = rt.apply_retargeting_constraints(
@@ -632,7 +633,8 @@ class KIMODO_OT_SavePreset(Operator):
             return {'CANCELLED'}
 
         pairs = [{"src": item.source_bone, "tgt": item.target_bone,
-                  "en": item.enabled, "mode": item.retarget_mode}
+                  "en": item.enabled, "mode": item.retarget_mode,
+                  "inherit_rot": item.inherit_rotation}
                  for item in s.bone_mappings]
         rt.save_preset(prefs, name, pairs)
         self.report({'INFO'}, f"Preset '{name}' saved ({len(pairs)} bone pairs)")
@@ -659,10 +661,11 @@ class KIMODO_OT_LoadPreset(Operator):
         s.bone_mappings.clear()
         for p in pairs:
             item = s.bone_mappings.add()
-            item.source_bone   = p.get("src", "")
-            item.target_bone   = p.get("tgt", "")
-            item.enabled       = p.get("en", True)
-            item.retarget_mode = p.get("mode", "COPY_ROTATION")
+            item.source_bone     = p.get("src", "")
+            item.target_bone     = p.get("tgt", "")
+            item.enabled         = p.get("en", True)
+            item.retarget_mode   = p.get("mode", "COPY_ROTATION")
+            item.inherit_rotation = p.get("inherit_rot", True)
 
         self.report({'INFO'}, f"Loaded preset '{name}' ({len(pairs)} bone pairs)")
         return {'FINISHED'}
@@ -709,7 +712,8 @@ class KIMODO_OT_ExportPresetFile(Operator):
     def execute(self, context):
         s = context.scene.kimodo
         pairs = [{"src": item.source_bone, "tgt": item.target_bone,
-                  "en": item.enabled, "mode": item.retarget_mode}
+                  "en": item.enabled, "mode": item.retarget_mode,
+                  "inherit_rot": item.inherit_rotation}
                  for item in s.bone_mappings]
         try:
             with open(self.filepath, "w", encoding="utf-8") as f:
@@ -749,10 +753,11 @@ class KIMODO_OT_ImportPresetFile(Operator):
         s.bone_mappings.clear()
         for p in pairs:
             item = s.bone_mappings.add()
-            item.source_bone   = p.get("src", "")
-            item.target_bone   = p.get("tgt", "")
-            item.enabled       = p.get("en", True)
-            item.retarget_mode = p.get("mode", "COPY_ROTATION")
+            item.source_bone     = p.get("src", "")
+            item.target_bone     = p.get("tgt", "")
+            item.enabled         = p.get("en", True)
+            item.retarget_mode   = p.get("mode", "COPY_ROTATION")
+            item.inherit_rotation = p.get("inherit_rot", True)
 
         self.report({'INFO'}, f"Imported {len(pairs)} bone pairs from {self.filepath}")
         return {'FINISHED'}

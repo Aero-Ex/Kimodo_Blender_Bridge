@@ -611,6 +611,7 @@ class KIMODO_PT_Retarget(KIMODO_PanelBase, Panel):
 
         # Bone mapping list
         layout.label(text="Bone Mapping:", icon='BONE_DATA')
+        layout.label(text="Link toggle = target bone's Inherit Rotation", icon='LINKED')
 
         if s.source_armature and s.target_armature:
             # Auto-match button

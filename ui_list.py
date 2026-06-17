@@ -48,6 +48,10 @@ class KIMODO_UL_BoneMappings(UIList):
             mode_icon = _MODE_ICONS.get(item.retarget_mode, 'CON_ROTLIKE')
             sub.prop(item, "retarget_mode", text="", icon=mode_icon)
 
+            # Per-bone 'Inherit Rotation' override toggle (linked = inherits).
+            sub.prop(item, "inherit_rotation", text="", toggle=True,
+                     icon='LINKED' if item.inherit_rotation else 'UNLINKED')
+
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text="", icon='BONE_DATA')

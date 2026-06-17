@@ -151,15 +151,19 @@ def auto_build_mapping(source_arm: bpy.types.Object,
 def apply_retargeting_constraints(
     source_arm: bpy.types.Object,
     target_arm: bpy.types.Object,
-    bone_pairs: "list[tuple[str, str, bool, str]]",  # (src, tgt, enabled, mode)
+    bone_pairs: "list[tuple]",  # (src, tgt, enabled, mode[, inherit_rotation])
     root_bone: str = "",
 ) -> "tuple[int, list[str]]":
     """
     Add retargeting constraints to each enabled bone pair.
     Returns (n_applied, [warning_messages]).
 
-    bone_pairs tuples: (source_bone, target_bone, enabled, retarget_mode)
+    bone_pairs tuples: (source_bone, target_bone, enabled, retarget_mode
+                        [, inherit_rotation])
     retarget_mode:  'COPY_ROTATION' | 'COPY_TRANSFORMS' | 'CHILD_OF'
+                    | 'CHILD_OF_ROTATION'
+    inherit_rotation (optional bool): when provided, sets the target bone's
+                    'Inherit Rotation' (use_inherit_rotation) property.
     """
     source_arm.hide_viewport = False
     target_arm.hide_viewport = False
@@ -169,8 +173,12 @@ def apply_retargeting_constraints(
     warnings = []
 
     for entry in bone_pairs:
-        # Accept both 3-tuples (legacy) and 4-tuples (with mode)
-        if len(entry) == 4:
+        # Accept 3-tuples (legacy), 4-tuples (with mode) and 5-tuples
+        # (with an inherit-rotation override).
+        inherit_rotation = None
+        if len(entry) == 5:
+            src_name, tgt_name, enabled, mode, inherit_rotation = entry
+        elif len(entry) == 4:
             src_name, tgt_name, enabled, mode = entry
         else:
             src_name, tgt_name, enabled = entry
@@ -186,6 +194,12 @@ def apply_retargeting_constraints(
         if src_name not in source_arm.data.bones:
             warnings.append(f"Source bone '{src_name}' not in Kimodo armature — skipped.")
             continue
+
+        # Apply the per-bone 'Inherit Rotation' override on the armature data.
+        if inherit_rotation is not None:
+            data_bone = target_arm.data.bones.get(tgt_name)
+            if data_bone is not None:
+                data_bone.use_inherit_rotation = inherit_rotation
 
         # Clear previous Kimodo constraints on this bone
         for c in list(tgt_pbone.constraints):
