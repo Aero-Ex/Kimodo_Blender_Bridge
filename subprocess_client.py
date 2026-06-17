@@ -102,6 +102,18 @@ def start(python_exe: str, model_name: str, progress_callback=None) -> "tuple[bo
             return False, f"bridge_server.py not found at: {bridge}"
 
         python = _resolve_python(python_exe)
+
+        # A moved/renamed venv leaves an absolute path baked into
+        # llm2vec_wrapper.py pointing at the old location; generation then
+        # fails with a HuggingFace "Repo id must be in the form…" error.
+        # Repair it in place so a relocated Kimodo venv just works.
+        try:
+            from . import setup_operator as _so
+            if _so.is_kimodo_venv(python):
+                _so.heal_wrapper_path(python)
+        except Exception:
+            pass
+
         _ready  = False
         _busy   = False
         _cancel_requested = False
