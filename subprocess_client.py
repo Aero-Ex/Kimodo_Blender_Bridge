@@ -377,6 +377,7 @@ def generate_motion_multi(
     num_transition_frames: int = 5,
     bvh_standard_tpose: bool = False,
     progress_callback=None,
+    seeds: "list[int] | None" = None,
 ) -> "tuple[bool, str]":
     """
     Generate a single continuous motion from multiple prompts in one model call.
@@ -392,6 +393,7 @@ def generate_motion_multi(
         "prompts": prompts,
         "durations": durations,
         "seed": seed if seed >= 0 else None,
+        "seeds": seeds,
         "output_format": output_format,
         "constraints_json": constraints_json,
         "diffusion_steps": diffusion_steps,

@@ -1150,9 +1150,9 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         prompts   = [seg.prompt for _, seg in ordered]
         durations = [(seg.end_frame - seg.start_frame + 1) / fps for _, seg in ordered]
 
-        # Use the first enabled segment's seed (or random if unset)
-        first_seg = ordered[0][1]
-        seed = first_seg.seed if first_seg.seed >= 0 else random.randint(0, 2**31 - 1)
+        # Resolve seeds for all segments
+        seeds = [seg.seed if seg.seed >= 0 else random.randint(0, 2**31 - 1) for _, seg in ordered]
+        seed = seeds[0]
 
         # Build constraints relative to the start of the combined sequence
         constraints_json, con_err = _build_multi_prompt_constraints(context, self._start_frame)
@@ -1173,7 +1173,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         self._thread = threading.Thread(
             target=self._run_all,
             args=(prompts, durations, seed, s.output_format,
-                  constraints_json, s.bvh_standard_tpose, num_transition_frames),
+                  constraints_json, s.bvh_standard_tpose, num_transition_frames, seeds),
             daemon=True,
         )
         self._thread.start()
@@ -1184,7 +1184,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         return {'RUNNING_MODAL'}
 
     def _run_all(self, prompts, durations, seed, fmt, constraints_json, bvh_standard_tpose,
-                 num_transition_frames=5):
+                 num_transition_frames=5, seeds=None):
         def progress_cb(msg):
             _generation_state["progress"] = msg
 
@@ -1197,6 +1197,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             bvh_standard_tpose=bvh_standard_tpose,
             num_transition_frames=num_transition_frames,
             progress_callback=progress_cb,
+            seeds=seeds,
         )
         _generation_state["success"] = success
         _generation_state["result"]  = result

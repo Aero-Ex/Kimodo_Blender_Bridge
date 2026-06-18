@@ -218,12 +218,6 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
         row = layout.row(align=True)
         row.label(text="Model:")
         row.prop(s, "model_type", expand=True)
-        # Show seed for the selected segment if available
-        if s.motion_segments and 0 <= s.segment_index < len(s.motion_segments):
-            selected_seg = s.motion_segments[s.segment_index]
-            row.prop(selected_seg, "seed", text="Seed")
-        else:
-            row.prop(s, "seed", text="Global Seed")
 
         # --- FPS warning ---
         scene_fps = context.scene.render.fps / context.scene.render.fps_base
@@ -286,8 +280,11 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
 
             fps = context.scene.render.fps / context.scene.render.fps_base
             dur = (seg.end_frame - seg.start_frame + 1) / fps
-            col.label(text=f"  {dur:.1f}s · {seg.end_frame - seg.start_frame + 1} frames",
+            
+            row3 = col.row(align=True)
+            row3.label(text=f"  {dur:.1f}s · {seg.end_frame - seg.start_frame + 1} frames",
                       icon='TIME')
+            row3.prop(seg, "seed", text="Seed")
 
 
 

@@ -164,6 +164,7 @@ def _generate_multi(req: dict, model, device: str) -> None:
     prompts        = req.get("prompts", [])
     durations      = req.get("durations", [])
     seed           = req.get("seed")
+    seeds          = req.get("seeds")
     output_format  = req.get("output_format", "bvh")
     diffusion_steps = int(req.get("diffusion_steps", 100))
     standard_tpose = bool(req.get("bvh_standard_tpose", False))
@@ -221,6 +222,7 @@ def _generate_multi(req: dict, model, device: str) -> None:
         num_transition_frames=num_transition_frames,
         post_processing=True,
         return_numpy=True,
+        seeds=seeds,
     )
 
     _out({"status": "progress", "message": "Saving combined output file…"})
