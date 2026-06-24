@@ -464,13 +464,26 @@ def _apply_to_existing_source(s, new_arm: bpy.types.Object) -> bpy.types.Object:
     if not existing or existing.type != 'ARMATURE' or existing == new_arm:
         return new_arm  # nothing to reuse — keep the freshly imported one
 
+    new_action = new_arm.animation_data.action if new_arm.animation_data else None
+    old_action = existing.animation_data.action if existing.animation_data else None
+    new_arm_data = new_arm.data
+
     # Transfer the action (the data-block survives object deletion).  Bind the
     # slot explicitly so Blender 4.4+ keeps animating after the swap (issue #37).
-    if new_arm.animation_data and new_arm.animation_data.action:
-        _bind_action_with_slot(existing, new_arm.animation_data.action)
+    if new_action:
+        _bind_action_with_slot(existing, new_action)
 
-    # Remove the temporary stand-in armature.
+    # Remove the temporary stand-in armature object and its now-orphan data, so
+    # re-importing (e.g. from history) doesn't leave Kimodo_Source.001/.002 …
     bpy.data.objects.remove(new_arm, do_unlink=True)
+    if new_arm_data and new_arm_data.users == 0:
+        bpy.data.armatures.remove(new_arm_data)
+
+    # Drop the action that used to be on the reused armature once nothing else
+    # references it — otherwise every re-import piles up an orphan Action.001/.002.
+    if old_action and old_action is not new_action and old_action.users == 0:
+        bpy.data.actions.remove(old_action)
+
     return existing
 
 
