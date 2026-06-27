@@ -1176,6 +1176,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
     _thread          = None
     _segment_indices: list = []
     _start_frame: int = 1
+    _resolved_seed: int = -1
 
     def invoke(self, context, event):
         s = context.scene.kimodo
@@ -1211,6 +1212,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         # Resolve seeds for all segments
         seeds = [seg.seed if seg.seed >= 0 else random.randint(0, 2**31 - 1) for _, seg in ordered]
         seed = seeds[0]
+        self._resolved_seed = seed
 
         # Build constraints relative to the start of the combined sequence
         constraints_json, con_err = _build_multi_prompt_constraints(context, self._start_frame)
@@ -1287,10 +1289,15 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             file_path = _generation_state["result"]
 
             # Mark all segments as generated and store the shared path
-            for idx in self._segment_indices:
-                seg = s.motion_segments[idx]
+            generated_segments = [s.motion_segments[idx] for idx in self._segment_indices]
+            for seg in generated_segments:
                 seg.last_bvh_path = file_path
                 seg.generated = True
+
+            fps = context.scene.render.fps / context.scene.render.fps_base
+            prompt = " | ".join(seg.prompt for seg in generated_segments)
+            duration = sum((seg.end_frame - seg.start_frame + 1) / fps for seg in generated_segments)
+            _push_history(s, prompt, self._resolved_seed, duration, file_path)
 
             if os.path.splitext(file_path)[1].lower() == ".bvh":
                 label = f"{len(self._segment_indices)}-prompt"
