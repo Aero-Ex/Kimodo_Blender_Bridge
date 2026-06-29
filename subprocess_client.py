@@ -193,10 +193,10 @@ def start(python_exe: str, model_name: str, use_offload: bool = False, progress_
 
         elif s == "error":
             err = msg.get("message", "Unknown error")
-            _status = f"Failed: {err}"
-            print(f"[Kimodo Bridge] ERROR: {_status}", flush=True)
-            stop()
-            return False, _status
+            err_message = f"Failed: {err}"
+            print(f"[Kimodo Bridge] ERROR: {err_message}", flush=True)
+            stop()  # resets _status to "Stopped" — use local var
+            return False, err_message
 
         else:
             print(f"[Kimodo Bridge] {msg}", flush=True)

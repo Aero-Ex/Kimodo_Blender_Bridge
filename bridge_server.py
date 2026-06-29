@@ -17,6 +17,15 @@ import sys
 import tempfile
 import traceback
 
+# On Windows with a non-UTF-8 locale (e.g. cp1251 Cyrillic), third-party
+# code may print() error messages containing characters the system codec
+# can't encode, crashing before we can report the real error.  Reconfigure
+# stdio to UTF-8 so those prints succeed over the pipe.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 
 def _out(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj) + "\n")
