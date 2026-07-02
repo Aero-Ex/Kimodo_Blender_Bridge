@@ -312,7 +312,10 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             row3 = col.row(align=True)
             row3.label(text=f"  {dur:.1f}s · {seg.end_frame - seg.start_frame + 1} frames",
                       icon='TIME')
-            row3.prop(seg, "seed", text="Seed")
+            seed_field = row3.row(align=True)
+            seed_field.enabled = seg.seed_mode != 'RANDOM'
+            seed_field.prop(seg, "seed", text="Seed")
+            row3.prop(seg, "seed_mode", expand=True)
 
 
 
@@ -410,9 +413,12 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
         layout.prop(s, "prompt", text="")
 
         # Duration + Seed
-        split = layout.split(factor=0.6)
-        split.prop(s, "duration", slider=True)
-        split.prop(s, "seed")
+        layout.prop(s, "duration", slider=True)
+        seed_row = layout.row(align=True)
+        seed_field = seed_row.row(align=True)
+        seed_field.enabled = s.seed_mode != 'RANDOM'
+        seed_field.prop(s, "seed")
+        seed_row.prop(s, "seed_mode", expand=True)
 
         # Output format
         row = layout.row(align=True)

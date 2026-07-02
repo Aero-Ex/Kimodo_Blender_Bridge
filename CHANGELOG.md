@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **ComfyUI-style seed control** (#40): The seed field in *Quick Generate* and on each *Motion Segment* now has four mode buttons — pin (don't edit), **+1** / **-1** (step the seed after every successful generation), and randomize (new random seed each time). Exactly one mode is always active. Selecting randomize grays the seed field out at -1 and remembers the previous seed; switching back to any other mode restores it. New / duplicated segments and *Sync Seeds* carry the mode over, and the seed actually used is printed to the System Console for reproducibility (it was already recorded in the generation history).
+
 ## [1.5.5] — 2026-06-24
 
 ### Fixed

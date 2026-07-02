@@ -47,6 +47,26 @@ def _on_end_frame_update(self, context):
             context.scene.frame_end = max_end_frame
 
 
+# ComfyUI-style seed control: exactly one mode is active at a time.
+# RANDOM grays the seed field out at -1 (random each generation); leaving
+# RANDOM restores the seed the user had before (kept in seed_stash).
+SEED_MODE_ITEMS = [
+    ('FIXED',     "",   "Don't edit — keep this exact seed for every generation", 'PINNED',       0),
+    ('INCREMENT', "+1", "Increase the seed by 1 after each generation",           'NONE',         1),
+    ('DECREMENT', "-1", "Decrease the seed by 1 after each generation",           'NONE',         2),
+    ('RANDOM',    "",   "Use a new random seed for every generation",             'FILE_REFRESH', 3),
+]
+
+
+def _on_seed_mode_update(self, context):
+    if self.seed_mode == 'RANDOM':
+        if self.seed >= 0:
+            self.seed_stash = self.seed
+            self.seed = -1
+    elif self.seed < 0:
+        self.seed = self.seed_stash
+
+
 class KIMODO_MotionSegment(PropertyGroup):
     """One motion segment: a text prompt mapped to a frame range."""
 
@@ -82,6 +102,15 @@ class KIMODO_MotionSegment(PropertyGroup):
         default=-1,
         min=-1,
     )
+    seed_mode: EnumProperty(
+        name="Seed Mode",
+        description="What happens to the seed after each generation",
+        items=SEED_MODE_ITEMS,
+        default='FIXED',
+        update=_on_seed_mode_update,
+    )
+    # Seed remembered while Randomize is active (restored on leaving it)
+    seed_stash: IntProperty(default=0, min=0)
     color: FloatVectorProperty(
         name="Color",
         description="Bar colour in the timeline",
@@ -301,6 +330,15 @@ class KIMODO_SceneSettings(PropertyGroup):
         default=-1,
         min=-1,
     )
+    seed_mode: EnumProperty(
+        name="Seed Mode",
+        description="What happens to the seed after each generation",
+        items=SEED_MODE_ITEMS,
+        default='FIXED',
+        update=_on_seed_mode_update,
+    )
+    # Seed remembered while Randomize is active (restored on leaving it)
+    seed_stash: IntProperty(default=0, min=0)
     output_format: EnumProperty(
         name="Format",
         description="File format Kimodo should export",
