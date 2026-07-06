@@ -51,10 +51,10 @@ def _on_end_frame_update(self, context):
 # RANDOM grays the seed field out at -1 (random each generation); leaving
 # RANDOM restores the seed the user had before (kept in seed_stash).
 SEED_MODE_ITEMS = [
-    ('FIXED',     "",   "Don't edit — keep this exact seed for every generation", 'PINNED',       0),
-    ('INCREMENT', "+1", "Increase the seed by 1 after each generation",           'NONE',         1),
-    ('DECREMENT', "-1", "Decrease the seed by 1 after each generation",           'NONE',         2),
-    ('RANDOM',    "",   "Use a new random seed for every generation",             'FILE_REFRESH', 3),
+    ('FIXED',     "", "Don't edit — keep this exact seed for every generation", 'PINNED',       0),
+    ('INCREMENT', "", "Increase the seed by 1 after each generation (+1)",      'ADD',          1),
+    ('DECREMENT', "", "Decrease the seed by 1 after each generation (-1)",      'REMOVE',       2),
+    ('RANDOM',    "", "Use a new random seed for every generation",             'FILE_REFRESH', 3),
 ]
 
 
@@ -539,6 +539,43 @@ class KIMODO_AddonPreferences(AddonPreferences):
 
 
 # ---------------------------------------------------------------------------
+# Transient-state cleanup (#43)
+# ---------------------------------------------------------------------------
+# is_generating / generation_progress are scene properties, so Blender saves
+# them into the .blend (and undo can restore them). A loaded file can never
+# have a live generation, so a saved is_generating=True would permanently
+# gray out the Generate button behind a "Cancelling…" that never finishes.
+
+def _reset_transient_generation_state() -> None:
+    for scene in bpy.data.scenes:
+        k = getattr(scene, "kimodo", None)
+        if k is None:
+            continue
+        if k.is_generating:
+            k.is_generating = False
+        if k.generation_progress:
+            k.generation_progress = ""
+        if k.generating_segment_index != -1:
+            k.generating_segment_index = -1
+
+
+@bpy.app.handlers.persistent
+def _on_load_post(_filepath):
+    _reset_transient_generation_state()
+
+
+def _reset_after_register():
+    """One-shot bpy.app.timers callback: clears stuck state in the file that
+    is already open when the addon is enabled/updated (load_post won't fire
+    for it)."""
+    try:
+        _reset_transient_generation_state()
+    except Exception:
+        pass
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -556,9 +593,18 @@ def register():
     for cls in _classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.kimodo = PointerProperty(type=KIMODO_SceneSettings)
+    if _on_load_post not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_load_post)
+    # bpy.data is restricted while addons register at startup; defer the
+    # cleanup of the already-open file to a one-shot timer.
+    bpy.app.timers.register(_reset_after_register, first_interval=0.0)
 
 
 def unregister():
+    if bpy.app.timers.is_registered(_reset_after_register):
+        bpy.app.timers.unregister(_reset_after_register)
+    if _on_load_post in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_load_post)
     del bpy.types.Scene.kimodo
     for cls in reversed(_classes):
         bpy.utils.unregister_class(cls)

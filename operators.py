@@ -408,12 +408,21 @@ class KIMODO_OT_CancelGeneration(Operator):
     bl_label = "Cancel"
 
     def execute(self, context):
-        if not context.scene.kimodo.is_generating:
+        s = context.scene.kimodo
+        if not s.is_generating:
             self.report({'INFO'}, "Nothing is generating.")
             return {'CANCELLED'}
+        # Stale state (#43): is_generating was saved into the .blend or
+        # restored by undo, but no job is actually running — just unlock.
+        if not _generation_state["running"] and not sc.is_busy():
+            s.is_generating = False
+            s.generating_segment_index = -1
+            s.generation_progress = ""
+            self.report({'INFO'}, "No generation was running — state reset.")
+            return {'FINISHED'}
         _generation_state["cancelled"] = True
         sc.request_cancel()
-        context.scene.kimodo.generation_progress = "Cancelling…"
+        s.generation_progress = "Cancelling…"
         self.report({'INFO'}, "Cancellation requested — result will be discarded.")
         return {'FINISHED'}
 

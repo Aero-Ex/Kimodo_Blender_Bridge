@@ -315,7 +315,9 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             seed_field = row3.row(align=True)
             seed_field.enabled = seg.seed_mode != 'RANDOM'
             seed_field.prop(seg, "seed", text="Seed")
-            row3.prop(seg, "seed_mode", expand=True)
+            seed_modes = row3.row(align=True)
+            seed_modes.alignment = 'RIGHT'
+            seed_modes.prop(seg, "seed_mode", expand=True)
 
 
 
@@ -418,7 +420,9 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
         seed_field = seed_row.row(align=True)
         seed_field.enabled = s.seed_mode != 'RANDOM'
         seed_field.prop(s, "seed")
-        seed_row.prop(s, "seed_mode", expand=True)
+        seed_modes = seed_row.row(align=True)
+        seed_modes.alignment = 'RIGHT'
+        seed_modes.prop(s, "seed_mode", expand=True)
 
         # Output format
         row = layout.row(align=True)
