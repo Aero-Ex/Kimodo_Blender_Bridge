@@ -6,9 +6,9 @@ A Blender addon that generates AI-driven human motion via [NVIDIA Kimodo](https:
 
 <a href="https://www.star-history.com/?repos=lewdineer%2FKimodo_Blender_Bridge&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=lewdineer/Kimodo_Blender_Bridge&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=lewdineer/Kimodo_Blender_Bridge&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=lewdineer/Kimodo_Blender_Bridge&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=lewdineer/Kimodo_Blender_Bridge&type=date&theme=dark&legend=top-left&sealed_token=gg3e8bjBVO1mASsY7F2FfwXezEB5zKIehjMw-s8K0AeGqeg94JCIRoPyBtxv55OxO9Pvi5cFwEyXXpA7wOwC8khA42N0EIz--WX4-WLBhTkFav2p97mv0gNKScQBzfaLta9xHnw9ELr6Ntm0RTGEbBvwvSp8RubVcK10aKSlsQs3pwmd4LuWqQp0kpux" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=lewdineer/Kimodo_Blender_Bridge&type=date&legend=top-left&sealed_token=gg3e8bjBVO1mASsY7F2FfwXezEB5zKIehjMw-s8K0AeGqeg94JCIRoPyBtxv55OxO9Pvi5cFwEyXXpA7wOwC8khA42N0EIz--WX4-WLBhTkFav2p97mv0gNKScQBzfaLta9xHnw9ELr6Ntm0RTGEbBvwvSp8RubVcK10aKSlsQs3pwmd4LuWqQp0kpux" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=lewdineer/Kimodo_Blender_Bridge&type=date&legend=top-left&sealed_token=gg3e8bjBVO1mASsY7F2FfwXezEB5zKIehjMw-s8K0AeGqeg94JCIRoPyBtxv55OxO9Pvi5cFwEyXXpA7wOwC8khA42N0EIz--WX4-WLBhTkFav2p97mv0gNKScQBzfaLta9xHnw9ELr6Ntm0RTGEbBvwvSp8RubVcK10aKSlsQs3pwmd4LuWqQp0kpux" />
  </picture>
 </a>
 
