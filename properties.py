@@ -57,14 +57,37 @@ SEED_MODE_ITEMS = [
     ('RANDOM',    "", "Use a new random seed for every generation",             'FILE_REFRESH', 3),
 ]
 
+# Flag to prevent callback loops
+_seed_updating = False
+
 
 def _on_seed_mode_update(self, context):
-    if self.seed_mode == 'RANDOM':
-        if self.seed >= 0:
-            self.seed_stash = self.seed
-        self.seed = -1
-    elif self.seed < 0:
-        self.seed = max(0, self.seed_stash)
+    global _seed_updating
+    if _seed_updating:
+        return
+    _seed_updating = True
+    try:
+        if self.seed_mode == 'RANDOM':
+            if self.seed >= 0:
+                self.seed_stash = self.seed
+            self.seed = -1
+        elif self.seed < 0:
+            self.seed = max(0, self.seed_stash)
+    finally:
+        _seed_updating = False
+
+
+def _on_seed_update(self, context):
+    """Switch to RANDOM mode when user inputs -1."""
+    global _seed_updating
+    if _seed_updating:
+        return
+    if self.seed < 0 and self.seed_mode != 'RANDOM':
+        _seed_updating = True
+        try:
+            self.seed_mode = 'RANDOM'
+        finally:
+            _seed_updating = False
 
 
 class KIMODO_MotionSegment(PropertyGroup):
@@ -101,6 +124,7 @@ class KIMODO_MotionSegment(PropertyGroup):
         description="Random seed (-1 = random each time)",
         default=-1,
         min=-1,
+        update=_on_seed_update,
     )
     seed_mode: EnumProperty(
         name="Seed Mode",
@@ -332,6 +356,7 @@ class KIMODO_SceneSettings(PropertyGroup):
         description="Random seed (-1 = random each time)",
         default=-1,
         min=-1,
+        update=_on_seed_update,
     )
     seed_mode: EnumProperty(
         name="Seed Mode",
