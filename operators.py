@@ -108,10 +108,12 @@ def _reset_state():
                               cancelled=False, result="", progress="")
 
 
-def _step_seed_after_generation(owner) -> None:
+def _step_seed_after_generation(owner, resolved_seed: int = None) -> None:
     """Advance `owner.seed` per its seed mode after a successful generation.
     `owner` is the scene settings or a motion segment. FIXED and RANDOM leave
     the seed untouched; the field never steps below 0 (-1 means random)."""
+    if resolved_seed is not None:
+        owner.seed_stash = resolved_seed
     if owner.seed_mode == 'INCREMENT' and owner.seed >= 0:
         owner.seed = min(owner.seed + 1, 2**31 - 1)
     elif owner.seed_mode == 'DECREMENT' and owner.seed > 0:
@@ -379,7 +381,7 @@ class KIMODO_OT_Generate(Operator):
             s.last_bvh_path = file_path
             s.generation_progress = "Done ✓"
             _push_history(s, s.prompt, self._resolved_seed, s.duration, file_path)
-            _step_seed_after_generation(s)
+            _step_seed_after_generation(s, self._resolved_seed)
             # Auto-import if BVH
             ext = os.path.splitext(file_path)[1].lower()
             if ext == ".bvh":
@@ -1130,7 +1132,7 @@ class KIMODO_OT_GenerateSegment(Operator):
             seg.generated = True
             s.generation_progress = "Done ✓"
             _push_history(s, seg.prompt, self._resolved_seed, self._segment_duration, file_path)
-            _step_seed_after_generation(seg)
+            _step_seed_after_generation(seg, self._resolved_seed)
 
             if os.path.splitext(file_path)[1].lower() == ".bvh":
                 bpy.ops.kimodo.import_bvh_at_frame(
@@ -1334,8 +1336,8 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             duration = sum((seg.end_frame - seg.start_frame + 1) / fps for seg in generated_segments)
             _push_history(s, prompt, self._resolved_seed, duration, file_path,
                           seeds=self._resolved_seeds)
-            for seg in generated_segments:
-                _step_seed_after_generation(seg)
+            for i, seg in enumerate(generated_segments):
+                _step_seed_after_generation(seg, self._resolved_seeds[i] if i < len(self._resolved_seeds) else None)
 
             if os.path.splitext(file_path)[1].lower() == ".bvh":
                 label = f"{len(self._segment_indices)}-prompt"
