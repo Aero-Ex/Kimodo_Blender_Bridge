@@ -110,8 +110,8 @@ def _reset_state():
 
 def _step_seed_after_generation(owner, resolved_seed: int = None) -> None:
     """Advance `owner.seed` per its seed mode after a successful generation.
-    `owner` is the scene settings or a motion segment. FIXED and RANDOM leave
-    the seed untouched; the field never steps below 0 (-1 means random)."""
+    `owner` is the scene settings or a motion segment. If resolved_seed is provided,
+    it is stored in seed_stash for restoration when leaving RANDOM mode."""
     if resolved_seed is not None:
         owner.seed_stash = resolved_seed
     if owner.seed_mode == 'INCREMENT' and owner.seed >= 0:
