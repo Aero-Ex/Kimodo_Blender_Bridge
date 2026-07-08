@@ -62,9 +62,9 @@ def _on_seed_mode_update(self, context):
     if self.seed_mode == 'RANDOM':
         if self.seed >= 0:
             self.seed_stash = self.seed
-            self.seed = -1
+        self.seed = -1
     elif self.seed < 0:
-        self.seed = self.seed_stash
+        self.seed = max(0, self.seed_stash)
 
 
 class KIMODO_MotionSegment(PropertyGroup):
@@ -106,7 +106,7 @@ class KIMODO_MotionSegment(PropertyGroup):
         name="Seed Mode",
         description="What happens to the seed after each generation",
         items=SEED_MODE_ITEMS,
-        default='FIXED',
+        default='RANDOM',
         update=_on_seed_mode_update,
     )
     # Seed remembered while Randomize is active (restored on leaving it)
@@ -337,7 +337,7 @@ class KIMODO_SceneSettings(PropertyGroup):
         name="Seed Mode",
         description="What happens to the seed after each generation",
         items=SEED_MODE_ITEMS,
-        default='FIXED',
+        default='RANDOM',
         update=_on_seed_mode_update,
     )
     # Seed remembered while Randomize is active (restored on leaving it)
