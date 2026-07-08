@@ -49,7 +49,7 @@ def _on_end_frame_update(self, context):
 
 # ComfyUI-style seed control: exactly one mode is active at a time.
 # RANDOM grays the seed field out at -1 (random each generation); leaving
-# RANDOM restores the seed the user had before (kept in seed_stash).
+# RANDOM restores the last actually used seed (kept in seed_stash).
 SEED_MODE_ITEMS = [
     ('FIXED',     "", "Don't edit — keep this exact seed for every generation", 'PINNED',       0),
     ('INCREMENT', "", "Increase the seed by 1 after each generation (+1)",      'ADD',          1),
@@ -109,7 +109,7 @@ class KIMODO_MotionSegment(PropertyGroup):
         default='RANDOM',
         update=_on_seed_mode_update,
     )
-    # Seed remembered while Randomize is active (restored on leaving it)
+    # Last actually used seed (written after generation or user input, restored when leaving RANDOM)
     seed_stash: IntProperty(default=0, min=0)
     color: FloatVectorProperty(
         name="Color",
@@ -340,7 +340,7 @@ class KIMODO_SceneSettings(PropertyGroup):
         default='RANDOM',
         update=_on_seed_mode_update,
     )
-    # Seed remembered while Randomize is active (restored on leaving it)
+    # Last actually used seed (written after generation or user input, restored when leaving RANDOM)
     seed_stash: IntProperty(default=0, min=0)
     output_format: EnumProperty(
         name="Format",
