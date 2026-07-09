@@ -111,13 +111,17 @@ def _reset_state():
 def _step_seed_after_generation(owner, resolved_seed: int = None) -> None:
     """Record/advance `owner.seed` per its seed mode after a successful generation.
     `owner` is the scene settings or a motion segment. In RANDOM mode the actual
-    seed used is written back to seed so leaving RANDOM reproduces the last result."""
+    seed used is written back to seed so leaving RANDOM reproduces the last result.
+    `last_used_seed` always receives the seed that was actually used so that
+    switching to FIXED can lock the most recent result."""
     if owner.seed_mode == 'INCREMENT' and owner.seed >= 0:
         owner.seed = min(owner.seed + 1, 2**31 - 1)
     elif owner.seed_mode == 'DECREMENT' and owner.seed > 0:
         owner.seed -= 1
     elif owner.seed_mode == 'RANDOM' and resolved_seed is not None:
         owner.seed = resolved_seed
+    if resolved_seed is not None:
+        owner.last_used_seed = resolved_seed
 
 
 _HISTORY_MAX = 20

@@ -59,6 +59,14 @@ SEED_MODE_ITEMS = [
 ]
 
 
+def _on_seed_mode_update(self, context):
+    """When switching to FIXED, copy last_used_seed into seed so the panel
+    field shows the seed that was actually used last — letting the user lock
+    the result of a previous INCREMENT/DECREMENT/RANDOM generation."""
+    if self.seed_mode == 'FIXED':
+        self.seed = self.last_used_seed
+
+
 
 class KIMODO_MotionSegment(PropertyGroup):
     """One motion segment: a text prompt mapped to a frame range."""
@@ -95,11 +103,18 @@ class KIMODO_MotionSegment(PropertyGroup):
         default=0,
         min=0,
     )
+    last_used_seed: IntProperty(
+        name="Last Used Seed",
+        description="Seed actually used in the most recent generation. Switching to FIXED copies this into `seed` so the result can be locked.",
+        default=0,
+        min=0,
+    )
     seed_mode: EnumProperty(
         name="Seed Mode",
         description="What happens to the seed after each generation",
         items=SEED_MODE_ITEMS,
         default='RANDOM',
+        update=_on_seed_mode_update,
     )
     color: FloatVectorProperty(
         name="Color",
@@ -323,11 +338,18 @@ class KIMODO_SceneSettings(PropertyGroup):
         default=0,
         min=0,
     )
+    last_used_seed: IntProperty(
+        name="Last Used Seed",
+        description="Seed actually used in the most recent generation. Switching to FIXED copies this into `seed` so the result can be locked.",
+        default=0,
+        min=0,
+    )
     seed_mode: EnumProperty(
         name="Seed Mode",
         description="What happens to the seed after each generation",
         items=SEED_MODE_ITEMS,
         default='RANDOM',
+        update=_on_seed_mode_update,
     )
     output_format: EnumProperty(
         name="Format",
