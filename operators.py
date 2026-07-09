@@ -108,14 +108,20 @@ def _reset_state():
                               cancelled=False, result="", progress="")
 
 
-def _step_seed_after_generation(owner) -> None:
-    """Advance `owner.seed` per its seed mode after a successful generation.
-    `owner` is the scene settings or a motion segment. FIXED and RANDOM leave
-    the seed untouched; the field never steps below 0 (-1 means random)."""
+def _step_seed_after_generation(owner, resolved_seed: int = None) -> None:
+    """Record/advance `owner.seed` per its seed mode after a successful generation.
+    `owner` is the scene settings or a motion segment. In RANDOM mode the actual
+    seed used is written back to seed so leaving RANDOM reproduces the last result.
+    `last_used_seed` always receives the seed that was actually used so that
+    switching to FIXED can lock the most recent result."""
     if owner.seed_mode == 'INCREMENT' and owner.seed >= 0:
         owner.seed = min(owner.seed + 1, 2**31 - 1)
     elif owner.seed_mode == 'DECREMENT' and owner.seed > 0:
         owner.seed -= 1
+    elif owner.seed_mode == 'RANDOM' and resolved_seed is not None:
+        owner.seed = resolved_seed
+    if resolved_seed is not None:
+        owner.last_used_seed = resolved_seed
 
 
 _HISTORY_MAX = 20
@@ -305,7 +311,7 @@ class KIMODO_OT_Generate(Operator):
             return {'CANCELLED'}
 
         # Resolve seed (upper bound must stay within a 32-bit IntProperty)
-        seed = s.seed if s.seed >= 0 else random.randint(0, 2**31 - 1)
+        seed = random.randint(0, 2**31 - 1) if s.seed_mode == 'RANDOM' else s.seed
         self._resolved_seed = seed
         print(f"[Kimodo] Generating with seed {seed}", flush=True)
 
@@ -379,7 +385,7 @@ class KIMODO_OT_Generate(Operator):
             s.last_bvh_path = file_path
             s.generation_progress = "Done ✓"
             _push_history(s, s.prompt, self._resolved_seed, s.duration, file_path)
-            _step_seed_after_generation(s)
+            _step_seed_after_generation(s, self._resolved_seed)
             # Auto-import if BVH
             ext = os.path.splitext(file_path)[1].lower()
             if ext == ".bvh":
@@ -918,9 +924,8 @@ class KIMODO_OT_AddSegment(Operator):
         seg.start_frame = start
         seg.end_frame   = end
         seg.model_type  = s.model_type
-        seg.seed_stash  = s.seed_stash
-        seg.seed_mode   = s.seed_mode   # before seed: mode update touches seed
         seg.seed        = s.seed
+        seg.seed_mode   = s.seed_mode
         seg.color       = color
         seg.enabled     = True
 
@@ -965,9 +970,8 @@ class KIMODO_OT_DuplicateSegment(Operator):
         new_seg.start_frame = src.end_frame + 1
         new_seg.end_frame   = src.end_frame + 1 + duration
         new_seg.model_type  = src.model_type
-        new_seg.seed_stash  = src.seed_stash
-        new_seg.seed_mode   = src.seed_mode   # before seed: mode update touches seed
         new_seg.seed        = src.seed
+        new_seg.seed_mode   = src.seed_mode
         new_seg.color       = src.color
         new_seg.enabled     = src.enabled
 
@@ -1015,9 +1019,8 @@ class KIMODO_OT_SyncSeeds(Operator):
         global_seed = s.seed
         
         for seg in s.motion_segments:
-            seg.seed_stash = s.seed_stash
-            seg.seed_mode  = s.seed_mode   # before seed: mode update touches seed
-            seg.seed       = global_seed
+            seg.seed        = global_seed
+            seg.seed_mode   = s.seed_mode
 
         self.report({'INFO'}, f"Updated {len(s.motion_segments)} segments with seed {global_seed}")
         return {'FINISHED'}
@@ -1053,7 +1056,7 @@ class KIMODO_OT_GenerateSegment(Operator):
     def _start_generation(self, context, s, seg):
         import random as _random
 
-        seed = seg.seed if seg.seed >= 0 else _random.randint(0, 2**31 - 1)
+        seed = _random.randint(0, 2**31 - 1) if seg.seed_mode == 'RANDOM' else seg.seed
         self._resolved_seed = seed
         print(f"[Kimodo] Generating segment with seed {seed}", flush=True)
         fps  = context.scene.render.fps / context.scene.render.fps_base
@@ -1130,7 +1133,7 @@ class KIMODO_OT_GenerateSegment(Operator):
             seg.generated = True
             s.generation_progress = "Done ✓"
             _push_history(s, seg.prompt, self._resolved_seed, self._segment_duration, file_path)
-            _step_seed_after_generation(seg)
+            _step_seed_after_generation(seg, self._resolved_seed)
 
             if os.path.splitext(file_path)[1].lower() == ".bvh":
                 bpy.ops.kimodo.import_bvh_at_frame(
@@ -1243,7 +1246,8 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         durations = [(seg.end_frame - seg.start_frame + 1) / fps for _, seg in ordered]
 
         # Resolve seeds for all segments
-        seeds = [seg.seed if seg.seed >= 0 else random.randint(0, 2**31 - 1) for _, seg in ordered]
+        seeds = [random.randint(0, 2**31 - 1) if seg.seed_mode == 'RANDOM' else seg.seed
+                 for _, seg in ordered]
         seed = seeds[0]
         self._resolved_seed = seed
         self._resolved_seeds = list(seeds)
@@ -1334,8 +1338,8 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             duration = sum((seg.end_frame - seg.start_frame + 1) / fps for seg in generated_segments)
             _push_history(s, prompt, self._resolved_seed, duration, file_path,
                           seeds=self._resolved_seeds)
-            for seg in generated_segments:
-                _step_seed_after_generation(seg)
+            for i, seg in enumerate(generated_segments):
+                _step_seed_after_generation(seg, self._resolved_seeds[i] if i < len(self._resolved_seeds) else None)
 
             if os.path.splitext(file_path)[1].lower() == ".bvh":
                 label = f"{len(self._segment_indices)}-prompt"

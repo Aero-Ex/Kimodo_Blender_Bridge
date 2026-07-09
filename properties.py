@@ -48,8 +48,9 @@ def _on_end_frame_update(self, context):
 
 
 # ComfyUI-style seed control: exactly one mode is active at a time.
-# RANDOM grays the seed field out at -1 (random each generation); leaving
-# RANDOM restores the seed the user had before (kept in seed_stash).
+# `seed` is always >= 0. RANDOM mode ignores it and draws a fresh random seed
+# each generation. Leaving RANDOM keeps the last generated seed (written back to
+# `seed` after generation) so the result can be reproduced.
 SEED_MODE_ITEMS = [
     ('FIXED',     "", "Don't edit — keep this exact seed for every generation", 'PINNED',       0),
     ('INCREMENT', "", "Increase the seed by 1 after each generation (+1)",      'ADD',          1),
@@ -59,12 +60,12 @@ SEED_MODE_ITEMS = [
 
 
 def _on_seed_mode_update(self, context):
-    if self.seed_mode == 'RANDOM':
-        if self.seed >= 0:
-            self.seed_stash = self.seed
-            self.seed = -1
-    elif self.seed < 0:
-        self.seed = self.seed_stash
+    """When switching to FIXED, copy last_used_seed into seed so the panel
+    field shows the seed that was actually used last — letting the user lock
+    the result of a previous INCREMENT/DECREMENT/RANDOM generation."""
+    if self.seed_mode == 'FIXED':
+        self.seed = self.last_used_seed
+
 
 
 class KIMODO_MotionSegment(PropertyGroup):
@@ -98,19 +99,23 @@ class KIMODO_MotionSegment(PropertyGroup):
     )
     seed: IntProperty(
         name="Seed",
-        description="Random seed (-1 = random each time)",
-        default=-1,
-        min=-1,
+        description="Base seed used in FIXED / INCREMENT / DECREMENT modes (RANDOM ignores it)",
+        default=0,
+        min=0,
+    )
+    last_used_seed: IntProperty(
+        name="Last Used Seed",
+        description="Seed actually used in the most recent generation. Switching to FIXED copies this into `seed` so the result can be locked.",
+        default=0,
+        min=0,
     )
     seed_mode: EnumProperty(
         name="Seed Mode",
         description="What happens to the seed after each generation",
         items=SEED_MODE_ITEMS,
-        default='FIXED',
+        default='RANDOM',
         update=_on_seed_mode_update,
     )
-    # Seed remembered while Randomize is active (restored on leaving it)
-    seed_stash: IntProperty(default=0, min=0)
     color: FloatVectorProperty(
         name="Color",
         description="Bar colour in the timeline",
@@ -329,19 +334,23 @@ class KIMODO_SceneSettings(PropertyGroup):
     )
     seed: IntProperty(
         name="Seed",
-        description="Random seed (-1 = random each time)",
-        default=-1,
-        min=-1,
+        description="Base seed used in FIXED / INCREMENT / DECREMENT modes (RANDOM ignores it)",
+        default=0,
+        min=0,
+    )
+    last_used_seed: IntProperty(
+        name="Last Used Seed",
+        description="Seed actually used in the most recent generation. Switching to FIXED copies this into `seed` so the result can be locked.",
+        default=0,
+        min=0,
     )
     seed_mode: EnumProperty(
         name="Seed Mode",
         description="What happens to the seed after each generation",
         items=SEED_MODE_ITEMS,
-        default='FIXED',
+        default='RANDOM',
         update=_on_seed_mode_update,
     )
-    # Seed remembered while Randomize is active (restored on leaving it)
-    seed_stash: IntProperty(default=0, min=0)
     output_format: EnumProperty(
         name="Format",
         description="File format Kimodo should export",
