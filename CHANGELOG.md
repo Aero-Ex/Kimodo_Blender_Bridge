@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.7] — 2026-07-24
+
+### Fixed
+
+- **Critical: a failed install could delete the chosen folder's entire contents**: The *Retry Install* clean-up and the *Delete Virtual Environment* button called `shutil.rmtree()` directly on the configured install location. Because that location comes from a free-text *Install Location* preference field (and folder browser), pointing it at `$HOME`, `/`, `/home`, a mount point, or any populated directory and then retrying would recursively delete everything under it — there was no guard against non-venv paths, no ownership/marker requirement, and no protection for system or home directories. All deletions now go through a `_safe_rmtree()` guard that refuses to remove anything unless it resolves to a dedicated Kimodo-managed venv (identified by the install-complete sentinel, or a `kimodo-venv`/`.kimodo-venv` folder that is empty or contains real venv artefacts) *and* is not a protected location (filesystem/drive root, `$HOME` or its parent, a mount point, or a well-known system directory). The installer additionally refuses up front to use a protected path as the install location, so a mis-chosen folder fails loudly and early instead of being written into or wiped.
+
 ## [1.5.6] — 2026-07-06
 
 ### Added
