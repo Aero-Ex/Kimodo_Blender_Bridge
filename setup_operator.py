@@ -193,14 +193,23 @@ def _is_protected_path(real: str) -> bool:
             return True
     except OSError:
         return True
-    _system_roots = (
+    _system_roots = [
         "/", "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/var",
         "/opt", "/boot", "/dev", "/proc", "/sys", "/run", "/root", "/tmp",
         "/home", "/Users", "/Applications", "/System", "/Library",
-    )
+    ]
+    # Well-known Windows system locations, resolved from the environment so we
+    # don't hardcode a drive letter. Choosing (and later wiping) any of these
+    # is never a legitimate venv location.
+    for _env in ("SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)",
+                 "ProgramData", "ProgramW6432", "PUBLIC"):
+        _val = os.environ.get(_env)
+        if _val:
+            _system_roots.append(os.path.realpath(_val))
     low = real.rstrip("/\\") or "/"
     for sysroot in _system_roots:
-        if low == sysroot or low.lower() == sysroot.lower():
+        stripped = sysroot.rstrip("/\\") or sysroot
+        if low == stripped or low.lower() == stripped.lower():
             return True
     # Fewer than two components below root is never a real venv path.
     depth = len([p for p in real.replace("\\", "/").split("/") if p])
