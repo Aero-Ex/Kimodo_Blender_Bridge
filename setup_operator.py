@@ -17,7 +17,7 @@ import traceback
 
 import bpy
 from bpy.types import Operator
-from bpy.props import StringProperty, BoolProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -243,6 +243,74 @@ def _safe_rmtree(path: str) -> None:
             f"folder). If you are certain, delete it manually."
         )
     shutil.rmtree(real)
+
+
+# ---------------------------------------------------------------------------
+# Delete confirmation
+# ---------------------------------------------------------------------------
+# _safe_rmtree() keeps a wrong path from being wiped, but even a correct one is
+# a destructive, unrecoverable operation on a directory the user chose. Every
+# deletion is therefore confirmed first, and the dialog spells out the full
+# path so it is never ambiguous which directory is about to disappear.
+
+def _wrap_path(path: str, width: int = 56) -> "list[str]":
+    """Split a long path into label-sized chunks (Blender labels never wrap).
+
+    Breaks after path separators where possible so each line stays readable.
+    """
+    text = str(path)
+    if len(text) <= width:
+        return [text]
+    lines: "list[str]" = []
+    current = ""
+    for part in re.split(r"(?<=[/\\])", text):
+        while len(part) > width:            # single component longer than a line
+            if current:
+                lines.append(current)
+                current = ""
+            lines.append(part[:width])
+            part = part[width:]
+        if current and len(current) + len(part) > width:
+            lines.append(current)
+            current = part
+        else:
+            current += part
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _draw_delete_confirmation(layout, directory: str) -> None:
+    """Body of the 'really delete this directory?' dialog."""
+    col = layout.column(align=True)
+    col.label(text="Really delete this directory?", icon='TRASH')
+    box = layout.box().column(align=True)
+    for line in _wrap_path(directory or "(no path set)"):
+        box.label(text=line)
+    warn = layout.column(align=True)
+    warn.label(text="It and everything inside it will be permanently removed.",
+               icon='ERROR')
+    warn.label(text="This cannot be undone.", icon='BLANK1')
+
+
+def _request_delete_confirmation(directory: str, action: str) -> bool:
+    """Open the delete-confirmation dialog for *directory*.
+
+    Returns False when no dialog can be shown (background/headless Blender),
+    in which case the caller must refuse to delete rather than proceed
+    unconfirmed. On success the dialog re-runs the calling operator with
+    confirmed=True once the user agrees.
+    """
+    if bpy.app.background:
+        return False
+    try:
+        bpy.ops.kimodo.confirm_delete_dir(
+            'INVOKE_DEFAULT', directory=directory, action=action)
+    except Exception as exc:
+        _log(f"Could not open delete confirmation dialog: {exc}")
+        return False
+    return True
+
 
 # ---------------------------------------------------------------------------
 # Install state  (module-level; panels poll this via a redraw timer)
@@ -953,6 +1021,53 @@ def _do_install(hf_token: str = "", system_python: str = "",
 # Operators
 # ---------------------------------------------------------------------------
 
+class KIMODO_OT_ConfirmDeleteDir(Operator):
+    """Confirmation dialog shown before any venv directory is deleted.
+
+    Both deletion paths (the *Reset / Delete Venv* button and the *Retry
+    Install* clean-up) route through here so the user always sees the exact
+    directory first. Confirming re-runs the requesting operator with
+    confirmed=True, which is the only way a deletion ever happens.
+    """
+    bl_idname      = "kimodo.confirm_delete_dir"
+    bl_label       = "Delete Directory"
+    bl_description = "Confirm deletion of the Kimodo virtual environment folder"
+    bl_options     = {'INTERNAL'}
+
+    directory: StringProperty(options={'SKIP_SAVE'})
+    action: EnumProperty(
+        items=[
+            ('RESET', "Reset Venv",
+             "Delete the virtual environment"),
+            ('RETRY_INSTALL', "Retry Install",
+             "Delete the partial virtual environment, then reinstall"),
+        ],
+        default='RESET',
+        options={'SKIP_SAVE'},
+    )
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        try:
+            return wm.invoke_props_dialog(
+                self, width=460, title="Delete Directory?", confirm_text="Delete")
+        except TypeError:
+            # Older builds without the title / confirm_text arguments.
+            return wm.invoke_props_dialog(self, width=460)
+
+    def draw(self, context):
+        _draw_delete_confirmation(self.layout, self.directory)
+
+    def execute(self, context):
+        # Re-enter the operator that asked, this time carrying the consent.
+        if self.action == 'RETRY_INSTALL':
+            bpy.ops.kimodo.install_kimodo(
+                'EXEC_DEFAULT', prompt_location=False, confirmed=True)
+        else:
+            bpy.ops.kimodo.reset_venv('EXEC_DEFAULT', confirmed=True)
+        return {'FINISHED'}
+
+
 class KIMODO_OT_InstallKimodo(Operator):
     bl_idname      = "kimodo.install_kimodo"
     bl_label       = "Install Kimodo (Auto)"
@@ -969,6 +1084,9 @@ class KIMODO_OT_InstallKimodo(Operator):
     # Retry buttons set this False so they reuse the already-chosen location
     # instead of re-opening the folder browser.
     prompt_location: BoolProperty(default=True, options={'SKIP_SAVE'})
+    # Set only by the delete-confirmation dialog. Without it the clean-retry
+    # wipe below never runs — the user is asked about the exact folder first.
+    confirmed: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     def invoke(self, context, event):
         # Already running, or an explicit no-prompt retry → straight to execute.
@@ -1027,6 +1145,16 @@ class KIMODO_OT_InstallKimodo(Operator):
         # unambiguously our own venv, so a mis-chosen path can never trigger a
         # destructive wipe.
         if venv_exists() and not is_installed():
+            # Never wipe the folder behind the user's back: ask about this exact
+            # directory first. The dialog re-runs us with confirmed=True.
+            if not self.confirmed:
+                if not _request_delete_confirmation(install_dir, 'RETRY_INSTALL'):
+                    self.report(
+                        {"ERROR"},
+                        f"Refusing to delete '{install_dir}' without "
+                        f"confirmation. Remove it manually to retry.",
+                    )
+                return {"CANCELLED"}
             _log(f"Removing partial venv for clean retry: {install_dir}")
             try:
                 _safe_rmtree(install_dir)
@@ -1096,8 +1224,8 @@ class KIMODO_OT_ResetVenv(Operator):
         "reinstall for a different GPU or Python version."
     )
 
-    def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+    # Set only by the delete-confirmation dialog, which names the directory.
+    confirmed: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     def execute(self, context):
         if is_installing():
@@ -1107,6 +1235,15 @@ class KIMODO_OT_ResetVenv(Operator):
             self.report({"INFO"}, "No venv found — nothing to reset.")
             return {"CANCELLED"}
         install_dir = managed_venv()
+        # Always confirm the exact directory before removing it. The dialog
+        # re-runs this operator with confirmed=True if the user agrees.
+        if not self.confirmed:
+            if not _request_delete_confirmation(install_dir, 'RESET'):
+                self.report(
+                    {"ERROR"},
+                    f"Refusing to delete '{install_dir}' without confirmation.",
+                )
+            return {"CANCELLED"}
         try:
             _safe_rmtree(install_dir)
         except Exception as exc:
@@ -1143,6 +1280,7 @@ class KIMODO_OT_OpenPythonDownload(Operator):
 # ---------------------------------------------------------------------------
 
 _classes = [
+    KIMODO_OT_ConfirmDeleteDir,
     KIMODO_OT_InstallKimodo,
     KIMODO_OT_UseInstalledKimodo,
     KIMODO_OT_ResetVenv,

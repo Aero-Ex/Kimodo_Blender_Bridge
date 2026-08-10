@@ -2,6 +2,10 @@
 
 ## [1.5.7] — 2026-07-24
 
+### Changed
+
+- **Deleting a venv now always asks first, and names the directory**: *Reset Venv* / *Delete Venv* previously showed a generic "OK?" confirmation that never said what would be removed, and the *Retry Install* clean-up deleted the partial venv with no prompt at all. Both paths now open the same dialog, which spells out the full path of the directory about to be deleted (wrapped across lines so a long path is never cut off) and warns that its entire contents go with it. Nothing is removed unless that dialog is confirmed — in headless Blender, where no dialog can be shown, the deletion is refused instead of proceeding unconfirmed.
+
 ### Fixed
 
 - **Critical: a failed install could delete the chosen folder's entire contents**: The *Retry Install* clean-up and the *Delete Virtual Environment* button called `shutil.rmtree()` directly on the configured install location. Because that location comes from a free-text *Install Location* preference field (and folder browser), pointing it at `$HOME`, `/`, `/home`, a mount point, or any populated directory and then retrying would recursively delete everything under it — there was no guard against non-venv paths, no ownership/marker requirement, and no protection for system or home directories. All deletions now go through a `_safe_rmtree()` guard that refuses to remove anything unless it resolves to a dedicated Kimodo-managed venv (identified by the install-complete sentinel, or a `kimodo-venv`/`.kimodo-venv` folder that is empty or contains real venv artefacts) *and* is not a protected location. Protected covers every platform: POSIX roots (`/`, `/home`, `$HOME` and its parent, `/usr`, …), Windows drive roots (`C:\`), the Windows user profile (`C:\Users\…`) and system folders (`C:\Windows`, `Program Files`, `ProgramData`, resolved from the environment), and any mount point. The installer additionally refuses up front to use a protected path as the install location, so a mis-chosen folder fails loudly and early instead of being written into or wiped.
