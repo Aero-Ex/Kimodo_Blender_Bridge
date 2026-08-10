@@ -17,7 +17,7 @@ import traceback
 
 import bpy
 from bpy.types import Operator
-from bpy.props import StringProperty, BoolProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -128,6 +128,189 @@ def _venv_python(venv: str) -> str:
         if os.path.isfile(p):
             return p
     return ""
+
+# ---------------------------------------------------------------------------
+# Safe deletion guard
+# ---------------------------------------------------------------------------
+# A failed install must NEVER be able to delete arbitrary user data. Both the
+# "Retry Install" path and the "Delete Virtual Environment" button call
+# shutil.rmtree() on a directory the user can freely choose — via the folder
+# browser or the free-text "Install Location" preference field. Pointing that
+# at $HOME, /, /home, a mount point, or any populated folder and triggering a
+# wipe would otherwise recursively destroy everything under it. Every deletion
+# now goes through _safe_rmtree(), which refuses anything that is not
+# unambiguously a Kimodo-managed venv sitting in a non-protected location.
+
+# Directory basenames we create ourselves for the managed venv.
+_MANAGED_VENV_BASENAMES = {_DEFAULT_VENV_NAME, "kimodo-venv"}
+
+# Standard artefacts a `python -m venv` leaves behind; used to confirm a
+# partial/failed install is genuinely a venv we created before removing it.
+_VENV_MARKERS = {"pyvenv.cfg", "bin", "Scripts", "lib", "lib64", "include"}
+
+
+def _looks_like_kimodo_venv(path: str) -> bool:
+    """True only if *path* is unambiguously a Kimodo-managed venv directory.
+
+    Requires at least one positive identity signal so a clean-retry wipe can
+    never hit a folder that merely happens to be the chosen install location
+    (e.g. $HOME):
+      * the install-complete sentinel at its root, or
+      * a basename we create (.kimodo-venv / kimodo-venv) that is either empty
+        (a dir we just made) or already contains venv structure — so a partial
+        install still qualifies for a clean retry, but an unrelated folder that
+        merely shares the name and is full of user data does not.
+    """
+    if os.path.isfile(os.path.join(path, _SENTINEL_NAME)):
+        return True
+    if os.path.basename(os.path.normpath(path)) in _MANAGED_VENV_BASENAMES:
+        try:
+            entries = set(os.listdir(path))
+        except OSError:
+            return False
+        if not entries:                     # empty dir we just created — ours
+            return True
+        if entries & _VENV_MARKERS:         # real venv artefacts — ours
+            return True
+    return False
+
+
+def _is_protected_path(real: str) -> bool:
+    """True if *real* (absolute, symlink-resolved) must never be deleted.
+
+    Blocks filesystem/drive roots, the user's home directory and its parent
+    (/home, /Users, …), mount points, well-known system roots, and any path
+    too shallow to ever be a legitimate venv location.
+    """
+    parent = os.path.dirname(real)
+    if real == parent:                      # filesystem / drive root ("/", "C:\\")
+        return True
+    home = os.path.realpath(os.path.expanduser("~"))
+    if real == home or real == os.path.dirname(home):
+        return True
+    try:
+        if os.path.ismount(real):           # mount point / external drive / share
+            return True
+    except OSError:
+        return True
+    _system_roots = [
+        "/", "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/var",
+        "/opt", "/boot", "/dev", "/proc", "/sys", "/run", "/root", "/tmp",
+        "/home", "/Users", "/Applications", "/System", "/Library",
+    ]
+    # Well-known Windows system locations, resolved from the environment so we
+    # don't hardcode a drive letter. Choosing (and later wiping) any of these
+    # is never a legitimate venv location.
+    for _env in ("SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)",
+                 "ProgramData", "ProgramW6432", "PUBLIC"):
+        _val = os.environ.get(_env)
+        if _val:
+            _system_roots.append(os.path.realpath(_val))
+    low = real.rstrip("/\\") or "/"
+    for sysroot in _system_roots:
+        stripped = sysroot.rstrip("/\\") or sysroot
+        if low == stripped or low.lower() == stripped.lower():
+            return True
+    # Fewer than two components below root is never a real venv path.
+    depth = len([p for p in real.replace("\\", "/").split("/") if p])
+    if depth < 2:
+        return True
+    return False
+
+
+def _safe_rmtree(path: str) -> None:
+    """shutil.rmtree() that only ever deletes a Kimodo-managed venv.
+
+    Raises RuntimeError (without deleting anything) when *path* is empty,
+    missing, a protected/system/home/mount location, or lacks a Kimodo
+    identity marker. Callers surface the message to the user.
+    """
+    if not path or not str(path).strip():
+        raise RuntimeError("refusing to delete an empty path")
+    real = os.path.realpath(os.path.abspath(os.path.expanduser(str(path))))
+    if not os.path.isdir(real):
+        raise RuntimeError(f"not a directory: {real}")
+    if _is_protected_path(real):
+        raise RuntimeError(
+            f"refusing to delete protected location '{real}' — the install "
+            f"folder must be a dedicated Kimodo venv directory, not a home, "
+            f"system, or mount-point path"
+        )
+    if not _looks_like_kimodo_venv(real):
+        raise RuntimeError(
+            f"refusing to delete '{real}': it is not a Kimodo-managed venv "
+            f"(no '{_SENTINEL_NAME}' marker and not a recognised kimodo-venv "
+            f"folder). If you are certain, delete it manually."
+        )
+    shutil.rmtree(real)
+
+
+# ---------------------------------------------------------------------------
+# Delete confirmation
+# ---------------------------------------------------------------------------
+# _safe_rmtree() keeps a wrong path from being wiped, but even a correct one is
+# a destructive, unrecoverable operation on a directory the user chose. Every
+# deletion is therefore confirmed first, and the dialog spells out the full
+# path so it is never ambiguous which directory is about to disappear.
+
+def _wrap_path(path: str, width: int = 56) -> "list[str]":
+    """Split a long path into label-sized chunks (Blender labels never wrap).
+
+    Breaks after path separators where possible so each line stays readable.
+    """
+    text = str(path)
+    if len(text) <= width:
+        return [text]
+    lines: "list[str]" = []
+    current = ""
+    for part in re.split(r"(?<=[/\\])", text):
+        while len(part) > width:            # single component longer than a line
+            if current:
+                lines.append(current)
+                current = ""
+            lines.append(part[:width])
+            part = part[width:]
+        if current and len(current) + len(part) > width:
+            lines.append(current)
+            current = part
+        else:
+            current += part
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _draw_delete_confirmation(layout, directory: str) -> None:
+    """Body of the 'really delete this directory?' dialog."""
+    col = layout.column(align=True)
+    col.label(text="Really delete this directory?", icon='TRASH')
+    box = layout.box().column(align=True)
+    for line in _wrap_path(directory or "(no path set)"):
+        box.label(text=line)
+    warn = layout.column(align=True)
+    warn.label(text="It and everything inside it will be permanently removed.",
+               icon='ERROR')
+    warn.label(text="This cannot be undone.", icon='BLANK1')
+
+
+def _request_delete_confirmation(directory: str, action: str) -> bool:
+    """Open the delete-confirmation dialog for *directory*.
+
+    Returns False when no dialog can be shown (background/headless Blender),
+    in which case the caller must refuse to delete rather than proceed
+    unconfirmed. On success the dialog re-runs the calling operator with
+    confirmed=True once the user agrees.
+    """
+    if bpy.app.background:
+        return False
+    try:
+        bpy.ops.kimodo.confirm_delete_dir(
+            'INVOKE_DEFAULT', directory=directory, action=action)
+    except Exception as exc:
+        _log(f"Could not open delete confirmation dialog: {exc}")
+        return False
+    return True
+
 
 # ---------------------------------------------------------------------------
 # Install state  (module-level; panels poll this via a redraw timer)
@@ -838,6 +1021,53 @@ def _do_install(hf_token: str = "", system_python: str = "",
 # Operators
 # ---------------------------------------------------------------------------
 
+class KIMODO_OT_ConfirmDeleteDir(Operator):
+    """Confirmation dialog shown before any venv directory is deleted.
+
+    Both deletion paths (the *Reset / Delete Venv* button and the *Retry
+    Install* clean-up) route through here so the user always sees the exact
+    directory first. Confirming re-runs the requesting operator with
+    confirmed=True, which is the only way a deletion ever happens.
+    """
+    bl_idname      = "kimodo.confirm_delete_dir"
+    bl_label       = "Delete Directory"
+    bl_description = "Confirm deletion of the Kimodo virtual environment folder"
+    bl_options     = {'INTERNAL'}
+
+    directory: StringProperty(options={'SKIP_SAVE'})
+    action: EnumProperty(
+        items=[
+            ('RESET', "Reset Venv",
+             "Delete the virtual environment"),
+            ('RETRY_INSTALL', "Retry Install",
+             "Delete the partial virtual environment, then reinstall"),
+        ],
+        default='RESET',
+        options={'SKIP_SAVE'},
+    )
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        try:
+            return wm.invoke_props_dialog(
+                self, width=460, title="Delete Directory?", confirm_text="Delete")
+        except TypeError:
+            # Older builds without the title / confirm_text arguments.
+            return wm.invoke_props_dialog(self, width=460)
+
+    def draw(self, context):
+        _draw_delete_confirmation(self.layout, self.directory)
+
+    def execute(self, context):
+        # Re-enter the operator that asked, this time carrying the consent.
+        if self.action == 'RETRY_INSTALL':
+            bpy.ops.kimodo.install_kimodo(
+                'EXEC_DEFAULT', prompt_location=False, confirmed=True)
+        else:
+            bpy.ops.kimodo.reset_venv('EXEC_DEFAULT', confirmed=True)
+        return {'FINISHED'}
+
+
 class KIMODO_OT_InstallKimodo(Operator):
     bl_idname      = "kimodo.install_kimodo"
     bl_label       = "Install Kimodo (Auto)"
@@ -854,6 +1084,9 @@ class KIMODO_OT_InstallKimodo(Operator):
     # Retry buttons set this False so they reuse the already-chosen location
     # instead of re-opening the folder browser.
     prompt_location: BoolProperty(default=True, options={'SKIP_SAVE'})
+    # Set only by the delete-confirmation dialog. Without it the clean-retry
+    # wipe below never runs — the user is asked about the exact folder first.
+    confirmed: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     def invoke(self, context, event):
         # Already running, or an explicit no-prompt retry → straight to execute.
@@ -888,13 +1121,43 @@ class KIMODO_OT_InstallKimodo(Operator):
         # Resolve the install location on the main thread (reads addon prefs).
         install_dir = managed_venv()
 
+        # Refuse to operate on a protected location before doing anything. The
+        # install location comes from a free-text preference field / folder
+        # browser, so it can point at $HOME, a system dir, or a mount point.
+        # Installing a venv there (and later wiping it on retry) is never
+        # intended and would scatter or endanger user data — fail loudly and
+        # early instead.
+        real_dir = os.path.realpath(
+            os.path.abspath(os.path.expanduser(install_dir)))
+        if _is_protected_path(real_dir):
+            self.report(
+                {"ERROR"},
+                f"Refusing to use '{real_dir}' as the install location. Pick a "
+                f"dedicated folder (a 'kimodo-venv' subfolder is created for "
+                f"you) — not your home, a system, or a mount-point directory.",
+            )
+            return {"CANCELLED"}
+
         # Remove any partial venv so we always start clean on a retry.
         # A complete install is guarded by the sentinel file; if that's absent
         # the venv is broken and safe to wipe regardless of session state.
+        # _safe_rmtree() additionally refuses to delete anything that is not
+        # unambiguously our own venv, so a mis-chosen path can never trigger a
+        # destructive wipe.
         if venv_exists() and not is_installed():
+            # Never wipe the folder behind the user's back: ask about this exact
+            # directory first. The dialog re-runs us with confirmed=True.
+            if not self.confirmed:
+                if not _request_delete_confirmation(install_dir, 'RETRY_INSTALL'):
+                    self.report(
+                        {"ERROR"},
+                        f"Refusing to delete '{install_dir}' without "
+                        f"confirmation. Remove it manually to retry.",
+                    )
+                return {"CANCELLED"}
             _log(f"Removing partial venv for clean retry: {install_dir}")
             try:
-                shutil.rmtree(install_dir)
+                _safe_rmtree(install_dir)
             except Exception as exc:
                 self.report({"ERROR"}, f"Could not remove partial venv: {exc}")
                 return {"CANCELLED"}
@@ -961,8 +1224,8 @@ class KIMODO_OT_ResetVenv(Operator):
         "reinstall for a different GPU or Python version."
     )
 
-    def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+    # Set only by the delete-confirmation dialog, which names the directory.
+    confirmed: BoolProperty(default=False, options={'SKIP_SAVE'})
 
     def execute(self, context):
         if is_installing():
@@ -972,8 +1235,17 @@ class KIMODO_OT_ResetVenv(Operator):
             self.report({"INFO"}, "No venv found — nothing to reset.")
             return {"CANCELLED"}
         install_dir = managed_venv()
+        # Always confirm the exact directory before removing it. The dialog
+        # re-runs this operator with confirmed=True if the user agrees.
+        if not self.confirmed:
+            if not _request_delete_confirmation(install_dir, 'RESET'):
+                self.report(
+                    {"ERROR"},
+                    f"Refusing to delete '{install_dir}' without confirmation.",
+                )
+            return {"CANCELLED"}
         try:
-            shutil.rmtree(install_dir)
+            _safe_rmtree(install_dir)
         except Exception as exc:
             self.report({"ERROR"}, f"Could not remove venv: {exc}")
             return {"CANCELLED"}
@@ -1008,6 +1280,7 @@ class KIMODO_OT_OpenPythonDownload(Operator):
 # ---------------------------------------------------------------------------
 
 _classes = [
+    KIMODO_OT_ConfirmDeleteDir,
     KIMODO_OT_InstallKimodo,
     KIMODO_OT_UseInstalledKimodo,
     KIMODO_OT_ResetVenv,
