@@ -22,7 +22,7 @@ class KIMODO_PanelBase:
 
 
 # ---------------------------------------------------------------------------
-# Generation history (shared by Quick Generate + Motion Segments panels)
+# Generation history (shared by both Generate panel modes)
 # ---------------------------------------------------------------------------
 
 def _label_wrapped(col, text, context, icon='NONE'):

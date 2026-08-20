@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.8] — 2026-08-20
+
+### Changed
+
+- **Quick Generate and Motion Segments are now one Generate panel with a Single Clip / Timeline switch**: The two panels drew the same model picker, reuse-armature row, T-pose option, FPS warning, Generate button and history list independently — identically, in two separate collapsed panels, with nothing indicating they were related. A new user had no way to tell which one to open first. Single-prompt and multi-segment generation are now two modes of one **Generate** panel: everything that was duplicated between them is drawn once, and only the parts that actually differ — the prompt field vs. the segment list — switch with the mode. The panel also opens expanded by default, since generating motion is the point of the addon rather than something to discover behind a collapsed header. Nothing about generation itself changed — every operator and property this touches is unchanged, only how it's drawn.
+- **Motion Constraints rows no longer clip their type label**: each row packed a checkbox, a type icon, the type dropdown, an `F:` label, the frame number, a goto-frame button, a select-object button and a remove button into a single row, which left no room for a label like "Full-Body Pose" alongside the rest — Blender clipped it to `Full-Bo…` and abbreviated the frame field down to a bare `F:`. Each row is now two: what the constraint is (enabled, type icon, type dropdown, remove) on the first line, when it fires (frame, jump-to-frame, select object) on the second.
+
 ## [1.5.7] — 2026-07-24
 
 ### Changed

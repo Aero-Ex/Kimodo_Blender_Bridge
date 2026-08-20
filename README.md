@@ -98,19 +98,15 @@ If you already have Kimodo installed in your own venv, skip the auto-installer a
 1. **Start** the bridge: click **Start Kimodo** in the Connection panel.  
    The status line will show *Loading model…* then *Ready* once the model is loaded (this takes 10–60 s the first time).
 
-2. Open the **Motion Segments** panel.
+2. Open the **Generate** panel. It opens in **Single Clip** mode — type a prompt (e.g. `a person jogs in a circle`), set a duration, and click **Generate Motion**.
 
-3. Click **Add** to create a segment, type a prompt (e.g. `a person jogs in a circle`), and set the frame range.
+3. A `Kimodo_Source` armature will appear in your scene with the generated motion applied.
 
-4. Click **Generate Selected** (one segment) or **Generate All** (all enabled segments in one model call with smooth transitions).
-
-5. A `Kimodo_Source` armature will appear in your scene with the generated motion applied.
-
-> **30 FPS tip:** Kimodo always generates at 30 FPS. If your scene is set to a different frame rate, an alert will appear above the generate buttons with a **Set to 30 FPS** button.
+> **30 FPS tip:** Kimodo always generates at 30 FPS. If your scene is set to a different frame rate, an alert will appear above the Generate button with a **Set to 30 FPS** button.
 
 ### Use multiple segments
 
-Each segment is an independent text prompt mapped to a frame range. **Generate All** sends every enabled segment to Kimodo in a single model call, producing one continuous animation with smooth transitions between prompts.
+Switch the **Generate** panel to **Timeline** mode for this. Each segment is an independent text prompt mapped to a frame range. **Generate Motion** sends every enabled segment to Kimodo in a single model call, producing one continuous animation with smooth transitions between prompts.
 
 - Segments are listed in order. The **Start** frame of each segment after the first is automatically locked to the **End** frame of the previous segment — just drag the End frame and the next segment's Start updates automatically.
 - Use **Duplicate** to copy a segment and place it immediately after.
@@ -160,8 +156,7 @@ To add a constraint:
 | Panel | What's in it |
 |---|---|
 | **Connection** | Kimodo Python path, model selector, Start / Stop bridge |
-| **Motion Segments** | Prompt list, frame ranges, Generate Selected / Generate All |
-| **Quick Generate** | Single-prompt generation with duration and seed controls |
+| **Generate** | Single Clip mode (one prompt, duration, seed) or Timeline mode (segment list, frame ranges) — one Generate Motion button either way |
 | **Motion Constraints** | Spatial waypoints for the generated motion |
 | **Retarget** | Bone mapping, Apply Constraints, Bake |
 | **Help** | Quick-start checklist, VRAM tip |
@@ -183,7 +178,7 @@ To add a constraint:
 - Make sure the source and target armatures are both in their rest pose / have the same pose before trying the retargeting, and have scale applied on the armature.
 
 **Frames from imorted animation dont match**
-- Kimodo generates at exactly 30 FPS. Use the **Set to 30 FPS** button that appears in the Motion Segments panel when your scene is at a different frame rate.
+- Kimodo generates at exactly 30 FPS. Use the **Set to 30 FPS** button that appears in the Generate panel when your scene is at a different frame rate.
 
 ---
 
