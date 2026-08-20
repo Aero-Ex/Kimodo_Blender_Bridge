@@ -295,36 +295,58 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
 
 
 # ---------------------------------------------------------------------------
-# Panel 2: Motion Segments (timeline bars)
+# Panel 2: Generate — Single Clip or Timeline, one workflow
 # ---------------------------------------------------------------------------
+#
+# Single Clip (one prompt -> one motion) and Timeline (multiple prompt
+# segments stitched together) used to be two separate panels that duplicated
+# the model picker, the reuse-armature row, the FPS warning, the T-pose
+# option, the Generate button and the history list -- identically, in two
+# places, both collapsed by default. A new user had no way to tell which
+# panel to open first, or that the two were even related. One panel with a
+# mode switch keeps everything that's actually shared in one place, drawn
+# once, and open by default since generating motion is the point of the addon.
 
-class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
-    bl_label  = "🏞  Motion Segments"
-    bl_idname = "KIMODO_PT_Segments"
-    bl_order  = 15
-    bl_options = {'DEFAULT_CLOSED'}
+class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
+    bl_label   = "🎬  Generate"
+    bl_idname  = "KIMODO_PT_Generate"
+    bl_order   = 14
 
     def draw(self, context):
         layout = self.layout
-        s      = context.scene.kimodo
+        s = context.scene.kimodo
+        layout.enabled = not s.is_generating
 
-        # --- Toolbar ---
-        row = layout.row(align=True)
-        row.operator("kimodo.add_segment",    text="Add",       icon='ADD')
-        row.operator("kimodo.remove_segment", text="Remove",    icon='REMOVE')
-        row.separator()
-        row.operator("kimodo.duplicate_segment", text="", icon='DUPLICATE')
-        row.operator("kimodo.move_segment_up",   text="", icon='TRIA_UP')
-        row.operator("kimodo.move_segment_down", text="", icon='TRIA_DOWN')
+        mode_row = layout.row(align=True)
+        mode_row.prop(s, "generate_mode", expand=True)
 
         layout.separator(factor=0.5)
-
 
         row = layout.row(align=True)
         row.label(text="Model:")
         row.prop(s, "model_type", expand=True)
 
-        # --- FPS warning ---
+        layout.separator(factor=0.5)
+
+        if s.generate_mode == 'SINGLE':
+            self._draw_single(layout, context, s)
+        else:
+            self._draw_timeline(layout, context, s)
+
+        layout.separator()
+
+        # --- Shared: output options ---
+        layout.prop(s, "bvh_standard_tpose", icon='ARMATURE_DATA')
+        reuse_row = layout.row(align=True)
+        reuse_row.prop(s, "reuse_armature", text="Reuse", icon='ARMATURE_DATA')
+        reuse_row.operator("kimodo.pick_latest_armature", text="", icon='SORTTIME')
+
+        if s.generate_mode == 'TIMELINE':
+            trans_row = layout.row(align=True)
+            trans_row.label(text="Transition Frames:")
+            trans_row.prop(s, "num_transition_frames", text="")
+
+        # --- Shared: FPS warning ---
         scene_fps = context.scene.render.fps / context.scene.render.fps_base
         if abs(scene_fps - 30.0) > 0.01:
             fps_box = layout.box()
@@ -332,133 +354,55 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             fps_box.label(text=f"Scene is {scene_fps:.4g} FPS — Kimodo needs 30 FPS", icon='ERROR')
             fps_box.operator("kimodo.set_to_30fps", text="Set to 30 FPS", icon='RECOVER_LAST')
 
-        # --- Segment list ---
-        if not s.motion_segments:
-            col = layout.column()
-            col.label(text="No segments yet.", icon='INFO')
-            col.label(text="Click Add to create one.")
-            return
-
-        for i, seg in enumerate(s.motion_segments):
-            is_active     = (i == s.segment_index)
-            is_generating = (i == s.generating_segment_index)
-
-            box = layout.box()
-            #box.alert = is_active   # blue highlight on active segment
-
-            # --- Header row: [enabled] [color] [label] [select] [generate] ---
-            header = box.row(align=True)
-
-            header.prop(seg, "enabled", text="", emboss=False,
-                        icon='CHECKBOX_HLT' if seg.enabled else 'CHECKBOX_DEHLT')
-
-            # Segment title: prompt preview + frame range
-            title = f"  {seg.prompt[:28]}{'…' if len(seg.prompt) > 28 else ''}"
-            header.label(text=title)
-
-            frames_label = f"{seg.start_frame}–{seg.end_frame}"
-            header.label(text=frames_label)
-
-            if is_generating:
-                header.label(text="", icon='TIME')
-            elif seg.generated:
-                header.label(text="", icon='CHECKMARK')
-
-            # Select button — sets this as the active segment
-            #select_icon = 'RADIOBUT_ON' if is_active else 'RADIOBUT_OFF'
-            #op_sel = header.operator("kimodo.select_segment", text="", icon=select_icon, emboss=False)
-            #op_sel.index = i
-
-            # Remove button
-            op_rem = header.operator("kimodo.remove_segment_by_index", text="", icon='X', emboss=False)
-            op_rem.index = i
-
-            # --- Body: always visible ---
-            col = box.column(align=True)
-            col.prop(seg, "prompt", text="")
-
-            row2 = col.row(align=True)
-            start_sub = row2.row(align=True)
-            start_sub.enabled = (i == 0)
-            start_sub.prop(seg, "start_frame", text="Start")
-            row2.prop(seg, "end_frame",   text="End")
-
-            fps = context.scene.render.fps / context.scene.render.fps_base
-            dur = (seg.end_frame - seg.start_frame + 1) / fps
-            
-            row3 = col.row(align=True)
-            row3.label(text=f"  {dur:.1f}s · {seg.end_frame - seg.start_frame + 1} frames",
-                      icon='TIME')
-            seed_field = row3.row(align=True)
-            seed_field.enabled = seg.seed_mode != 'RANDOM'
-            seed_field.prop(seg, "seed", text="Seed")
-            seed_modes = row3.row(align=True)
-            seed_modes.alignment = 'RIGHT'
-            seed_modes.prop(seg, "seed_mode", expand=True)
-
-
-
         layout.separator()
 
-        # --- Generate buttons ---
-        layout.prop(s, "bvh_standard_tpose", icon='ARMATURE_DATA')
-
-        # Reuse armature eyedropper + auto-pick button
-        reuse_row = layout.row(align=True)
-        reuse_row.prop(s, "reuse_armature", text="Reuse", icon='ARMATURE_DATA')
-        reuse_row.operator("kimodo.pick_latest_armature", text="", icon='SORTTIME')
-
-        # Transition frames control
-        trans_row = layout.row(align=True)
-        trans_row.enabled = s.is_connected and not s.is_generating
-        trans_row.label(text="Transition Frames:")
-        trans_row.prop(s, "num_transition_frames", text="")
-
-        gen_row = layout.row(align=True)
-        gen_row.enabled = s.is_connected and not s.is_generating
-        #gen_row.operator("kimodo.generate_segment",      text="Generate Selected", icon='PLAY')
-        #use tpose button below
-
-        gen_row.scale_y = 2
-        gen_row.operator("kimodo.generate_all_segments", text="Generate Motion",icon='PLAY')
-
+        # --- Shared: Generate / Cancel ---
         if s.is_generating:
-            box2 = layout.box()
-            box2.label(text=s.generation_progress or "Working…", icon='TIME')
-            box2.operator("kimodo.cancel_generation", text="Cancel", icon='X')
+            col = layout.column()
+            col.enabled = True   # re-enable for cancel
+            col.operator("kimodo.cancel_generation", text="⏹  Cancel", icon='X')
+            box = layout.box()
+            box.label(text=s.generation_progress or "Working…", icon='TIME')
+        else:
+            row = layout.column()
+            row.enabled = s.is_connected
+            row.scale_y = 2
+            if s.generate_mode == 'SINGLE':
+                connected_icon = 'PLAY' if s.is_connected else 'UNLINKED'
+                row.operator("kimodo.generate", text="Generate Motion", icon=connected_icon)
+                if s.generation_progress:
+                    layout.label(text=s.generation_progress,
+                                 icon='CHECKMARK' if "Done" in s.generation_progress else 'ERROR')
+            else:
+                row.operator("kimodo.generate_all_segments", text="Generate Motion", icon='PLAY')
 
-        # --- Generation History ---
+        # --- Single-mode only: batch variations ---
+        if s.generate_mode == 'SINGLE':
+            layout.separator()
+            var_row = layout.row(align=True)
+            var_row.enabled = s.is_connected and not s.is_generating
+            var_row.prop(s, "num_variations", text="Variations")
+            var_row.operator(
+                "kimodo.generate_variations",
+                text=f"Generate {s.num_variations} Variations",
+                icon='DUPLICATE',
+            )
+
+        # --- Shared: History ---
         _draw_history(layout, context, s)
 
+        # --- Shared: Manual import fallback ---
+        layout.separator()
+        box = layout.box()
+        box.label(text="Manual Import", icon='IMPORT')
+        row = box.row()
+        row.prop(s, "last_bvh_path", text="BVH Path")
+        row.operator("kimodo.import_bvh", text="", icon='FILE_FOLDER').filepath = ""
 
-
-# ---------------------------------------------------------------------------
-# Panel 3: Generate (single prompt, kept for quick use)
-# ---------------------------------------------------------------------------
-
-class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
-    bl_label   = "🎬  Quick Generate"
-    bl_idname  = "KIMODO_PT_Generate"
-    bl_order   = 14
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        layout = self.layout
-        s = context.scene.kimodo
-
-        # Disable panel while generating
-        layout.enabled = not s.is_generating
-
-        # Model selector
-        row = layout.row(align=True)
-        row.label(text="Model:")
-        row.prop(s, "model_type", expand=True)
-
-        # Prompt
+    def _draw_single(self, layout, context, s):
         layout.label(text="Prompt:")
         layout.prop(s, "prompt", text="")
 
-        # Duration + Seed
         layout.prop(s, "duration", slider=True)
         seed_row = layout.row(align=True)
         seed_field = seed_row.row(align=True)
@@ -468,73 +412,69 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
         seed_modes.alignment = 'RIGHT'
         seed_modes.prop(s, "seed_mode", expand=True)
 
-        # Output format
         row = layout.row(align=True)
         row.label(text="Output:")
         row.prop(s, "output_format", expand=True)
 
-        # BVH T-pose option (only show for BVH format)
-        if s.output_format == "bvh":
-            layout.prop(s, "bvh_standard_tpose", icon='ARMATURE_DATA')
+    def _draw_timeline(self, layout, context, s):
+        row = layout.row(align=True)
+        row.operator("kimodo.add_segment",    text="Add",    icon='ADD')
+        row.operator("kimodo.remove_segment", text="Remove", icon='REMOVE')
+        row.separator()
+        row.operator("kimodo.duplicate_segment", text="", icon='DUPLICATE')
+        row.operator("kimodo.move_segment_up",   text="", icon='TRIA_UP')
+        row.operator("kimodo.move_segment_down", text="", icon='TRIA_DOWN')
 
-        layout.separator()
+        layout.separator(factor=0.5)
 
-        # Reuse armature eyedropper + auto-pick button
-        reuse_row = layout.row(align=True)
-        reuse_row.prop(s, "reuse_armature", text="Reuse", icon='ARMATURE_DATA')
-        reuse_row.operator("kimodo.pick_latest_armature", text="", icon='SORTTIME')
-
-        layout.separator()
-
-        # Generate / Cancel button
-        if s.is_generating:
+        if not s.motion_segments:
             col = layout.column()
-            col.enabled = True   # re-enable for cancel
-            col.operator("kimodo.cancel_generation", text="⏹  Cancel", icon='X')
-            # Progress
+            col.label(text="No segments yet.", icon='INFO')
+            col.label(text="Click Add to create one.")
+            return
+
+        for i, seg in enumerate(s.motion_segments):
+            is_generating = (i == s.generating_segment_index)
+
             box = layout.box()
-            box.label(text=s.generation_progress or "Working…", icon='TIME')
-        else:
-            connected_icon = 'PLAY' if s.is_connected else 'UNLINKED'
-            row = layout.column()
-            
-            row.enabled = s.is_connected
-            
-            scene_fps = context.scene.render.fps / context.scene.render.fps_base
-            
-            if abs(scene_fps - 30.0) > 0.01:
-                fps_box = row.box()
-                fps_box.alert = True
-                fps_box.label(text=f"Scene is {scene_fps:.4g} FPS — Kimodo needs 30 FPS", icon='ERROR')
-                fps_box.operator("kimodo.set_to_30fps", text="Set to 30 FPS", icon='RECOVER_LAST')
+            header = box.row(align=True)
 
-            row.scale_y = 2
-            row.operator("kimodo.generate", text="Generate Motion", icon=connected_icon)
-            if s.generation_progress:
-                layout.label(text=s.generation_progress,
-                             icon='CHECKMARK' if "Done" in s.generation_progress else 'ERROR')
+            header.prop(seg, "enabled", text="", emboss=False,
+                        icon='CHECKBOX_HLT' if seg.enabled else 'CHECKBOX_DEHLT')
 
-        # --- Generate N Variations ---
-        layout.separator()
-        var_row = layout.row(align=True)
-        var_row.enabled = s.is_connected and not s.is_generating
-        var_row.prop(s, "num_variations", text="Variations")
-        var_row.operator(
-            "kimodo.generate_variations",
-            text=f"Generate {s.num_variations} Variations",
-            icon='DUPLICATE',
-        )
+            title = f"  {seg.prompt[:28]}{'…' if len(seg.prompt) > 28 else ''}"
+            header.label(text=title)
+            header.label(text=f"{seg.start_frame}–{seg.end_frame}")
 
-        # --- Generation History ---
-        _draw_history(layout, context, s)
+            if is_generating:
+                header.label(text="", icon='TIME')
+            elif seg.generated:
+                header.label(text="", icon='CHECKMARK')
 
-        # Manual import fallback
-        layout.separator()
-        box = layout.box()
-        box.label(text="Manual Import", icon='IMPORT')
-        row = box.row()
-        row.prop(s, "last_bvh_path", text="BVH Path")
-        row.operator("kimodo.import_bvh", text="", icon='FILE_FOLDER').filepath = ""
+            op_rem = header.operator("kimodo.remove_segment_by_index", text="", icon='X', emboss=False)
+            op_rem.index = i
+
+            col = box.column(align=True)
+            col.prop(seg, "prompt", text="")
+
+            row2 = col.row(align=True)
+            start_sub = row2.row(align=True)
+            start_sub.enabled = (i == 0)
+            start_sub.prop(seg, "start_frame", text="Start")
+            row2.prop(seg, "end_frame", text="End")
+
+            fps = context.scene.render.fps / context.scene.render.fps_base
+            dur = (seg.end_frame - seg.start_frame + 1) / fps
+
+            row3 = col.row(align=True)
+            row3.label(text=f"  {dur:.1f}s · {seg.end_frame - seg.start_frame + 1} frames",
+                      icon='TIME')
+            seed_field = row3.row(align=True)
+            seed_field.enabled = seg.seed_mode != 'RANDOM'
+            seed_field.prop(seg, "seed", text="Seed")
+            seed_modes = row3.row(align=True)
+            seed_modes.alignment = 'RIGHT'
+            seed_modes.prop(seg, "seed_mode", expand=True)
 
 
 # ---------------------------------------------------------------------------
@@ -602,39 +542,36 @@ class KIMODO_PT_Constraints(KIMODO_PanelBase, Panel):
 
         for i, ci in enumerate(s.motion_constraints):
             box = layout.box()
-            row = box.row(align=True)
 
-            # Enabled toggle
+            # --- Row 1: what it is ---
+            row = box.row(align=True)
             row.prop(ci, "enabled", text="", emboss=False,
                      icon='CHECKBOX_HLT' if ci.enabled else 'CHECKBOX_DEHLT')
 
-            # Type icon
             type_icons = {
                 'root2d': 'EMPTY_ARROWS', 'fullbody': 'ARMATURE_DATA',
                 'left_hand': 'VIEW_PAN',  'right_hand': 'VIEW_PAN',
                 'left_foot': 'SNAP_FACE', 'right_foot': 'SNAP_FACE',
             }
             row.label(text="", icon=type_icons.get(ci.constraint_type, 'DOT'))
-
-            # Type selector
             row.prop(ci, "constraint_type", text="")
 
-            # Frame
-            row.label(text="F:")
-            row.prop(ci, "frame", text="")
-
-            # Go to frame
-            op_goto = row.operator("kimodo.goto_constraint_frame", text="", icon='TIME')
-            op_goto.frame = ci.frame
-
-            # Select object
-            op_sel = row.operator("kimodo.select_constraint_object", text="", icon='RESTRICT_SELECT_OFF')
-            op_sel.index = i
-
-            # Remove
             op_rem = row.operator("kimodo.remove_constraint", text="", icon='X')
             op_rem.index = i
             op_rem.delete_object = False
+
+            # --- Row 2: when + jump/select. Type labels ("Full-Body Pose",
+            # "Root Waypoint"...) are too long to share a row with these and
+            # the type dropdown -- that's what crammed everything down to
+            # single letters before. ---
+            row2 = box.row(align=True)
+            row2.prop(ci, "frame", text="Frame")
+
+            op_goto = row2.operator("kimodo.goto_constraint_frame", text="", icon='TIME')
+            op_goto.frame = ci.frame
+
+            op_sel = row2.operator("kimodo.select_constraint_object", text="", icon='RESTRICT_SELECT_OFF')
+            op_sel.index = i
 
             # --- Object picker row — type-aware ---
             sub = box.row(align=True)
@@ -820,7 +757,6 @@ class KIMODO_PT_Help(KIMODO_PanelBase, Panel):
 
 _classes = [
     KIMODO_PT_Connection,
-    KIMODO_PT_Segments,
     KIMODO_PT_Generate,
     KIMODO_PT_Constraints,
     KIMODO_PT_Retarget,

@@ -310,6 +310,17 @@ class KIMODO_SceneSettings(PropertyGroup):
     is_connected: BoolProperty(default=False)
 
     # --- Generation ---
+    generate_mode: EnumProperty(
+        name="Generate Mode",
+        description="Single Clip generates one motion from one prompt. "
+                     "Timeline builds a longer animation from multiple "
+                     "prompt segments stitched together",
+        items=[
+            ("SINGLE",   "Single Clip", "One prompt, one motion clip"),
+            ("TIMELINE", "Timeline",    "Multiple prompt segments stitched into one animation"),
+        ],
+        default="SINGLE",
+    )
     model_type: EnumProperty(
         name="Model",
         description="Which Kimodo skeleton/model to use",
