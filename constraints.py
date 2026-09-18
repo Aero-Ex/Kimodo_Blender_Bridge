@@ -237,8 +237,35 @@ def get_armature_joint_rots(
       2. Conjugate the delta into Kimodo's Y-up basis (M_BK · delta · M_BK⁻¹)
          to get G[i] in Kimodo world coordinates.
       3. Recover the local rotation as R[i] = G[parent]⁻¹ @ G[i].
+
+    Mixamo prototype: if exact SOMA names are missing (e.g. a Mixamo rig
+    with mixamorig:Hips / LeftUpLeg), delegate to
+    retarget.soma_joint_rots_mixamo_aware which remaps via
+    SOMA_TO_MIXAMO_CANDIDATES. Keeps SOMA path bit-identical otherwise.
     """
     pose_bones = armature_obj.pose.bones
+
+    # Fast path check: are all mappable SOMA bones present verbatim?
+    # If not, this may be a Mixamo (or namespaced) rig — use the remapper.
+    try:
+        missing = [n for n in joint_order if pose_bones.get(n) is None]
+        # Only delegate when something structural is missing (not just
+        # Jaw/Eyes which BVH imports sometimes lack). Heuristic: if a core
+        # bone is missing, remap.
+        core = ("Hips", "Spine1", "Spine2", "Chest", "LeftArm", "LeftLeg",
+                "LeftShin", "RightLeg", "RightShin")
+        if any(c in missing for c in core):
+            try:
+                from .retarget import soma_joint_rots_mixamo_aware
+            except ImportError:
+                # Top-level (tests) or direct-module load fallback.
+                from retarget import soma_joint_rots_mixamo_aware
+            return soma_joint_rots_mixamo_aware(armature_obj, joint_order,
+                                               SOMA_JOINT_PARENTS)
+    except ImportError:
+        pass
+    except Exception as exc:
+        print(f"[Kimodo] Mixamo remap fallback failed ({exc}); using SOMA path.")
 
     # Blender Z-up → Kimodo Y-up basis change (see module header).
     # Vectors:  (x, y, z)_blender → (x, z, -y)_kimodo
@@ -280,12 +307,29 @@ def get_root_position(armature_obj: bpy.types.Object) -> list[float]:
     regardless of where the armature object's origin sits (BVH imports
     always place the armature origin at the scene origin; the Hips bone
     moves via keyframes/pose, not via the object location).
+    Mixamo-aware: also matches mixamorig:Hips / Pelvis (case-insensitive).
     """
     for bone_name in ("Hips", "hips", "Hip", "pelvis", "Pelvis"):
         pb = armature_obj.pose.bones.get(bone_name)
         if pb:
             world_pos = armature_obj.matrix_world @ pb.head
             return blender_to_kimodo_pos(world_pos)
+    # Namespace / case fallback (mixamorig:Hips etc.)
+    try:
+        try:
+            from .retarget import _name_index
+        except ImportError:
+            from retarget import _name_index
+        idx = _name_index(armature_obj)
+        for cand in ("hips", "hip", "pelvis"):
+            if cand in idx:
+                pb = armature_obj.pose.bones.get(idx[cand])
+                if pb is not None:
+                    world_pos = armature_obj.matrix_world @ pb.head
+                    return blender_to_kimodo_pos(world_pos)
+                break
+    except Exception:
+        pass
     return blender_to_kimodo_pos(armature_obj.location)
 
 
