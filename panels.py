@@ -626,101 +626,6 @@ class KIMODO_PT_Constraints(KIMODO_PanelBase, Panel):
 
 
 # ---------------------------------------------------------------------------
-# Panel 4: Retarget
-# ---------------------------------------------------------------------------
-
-class KIMODO_PT_Retarget(KIMODO_PanelBase, Panel):
-    bl_label   = "🦴  Retarget"
-    bl_idname  = "KIMODO_PT_Retarget"
-    bl_order   = 30
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        layout = self.layout
-        s = context.scene.kimodo
-
-        # Armature pickers
-        box = layout.box()
-        box.label(text="Armatures", icon='ARMATURE_DATA')
-        box.prop(s, "source_armature", text="Source (Kimodo)")
-        box.prop(s, "target_armature", text="Target (Your Rig)")
-        box.prop(s, "retarget_root_bone", text="Root Bone")
-
-        layout.separator()
-
-        # Bone mapping list
-        layout.label(text="Bone Mapping:", icon='BONE_DATA')
-        layout.label(text="Link toggle = target bone's Inherit Rotation", icon='LINKED')
-
-        if s.source_armature and s.target_armature:
-            # Auto-match button
-            layout.operator("kimodo.auto_map_bones",
-                            text="Auto-Match Bones", icon='SHADERFX')
-
-        row = layout.row()
-        row.template_list(
-            "KIMODO_UL_BoneMappings", "",
-            s, "bone_mappings",
-            s, "bone_mapping_index",
-            rows=6,
-        )
-
-        col = row.column(align=True)
-        col.operator("kimodo.add_bone_mapping",    text="", icon='ADD')
-        col.operator("kimodo.remove_bone_mapping", text="", icon='REMOVE')
-
-        layout.separator()
-
-        # Apply / Remove constraints
-        row = layout.row(align=True)
-        row.operator("kimodo.apply_retargeting",  text="Apply Constraints", icon='CONSTRAINT_BONE')
-        row.operator("kimodo.remove_retargeting", text="",                  icon='X')
-
-        layout.separator()
-
-        # Bake section
-        box = layout.box()
-        box.label(text="Bake Animation", icon='RENDER_ANIMATION')
-        row = box.row(align=True)
-        row.prop(s, "bake_start_frame", text="Start")
-        row.prop(s, "bake_end_frame",   text="End")
-        box.operator("kimodo.bake_retargeting",
-                     text="Bake & Remove Constraints", icon='NLA_PUSHDOWN')
-
-        layout.separator()
-
-        # Presets
-        box = layout.box()
-        box.label(text="Bone Map Presets", icon='PRESET')
-        row = box.row(align=True)
-        row.prop(s, "preset_name", text="")
-        row.operator("kimodo.save_preset", text="", icon='FILE_TICK')
-        row.operator("kimodo.load_preset", text="", icon='IMPORT').preset_name = s.preset_name
-
-        # List saved presets
-        try:
-            prefs = context.preferences.addons[__package__].preferences
-            from . import retarget as rt
-            preset_names = rt.list_presets(prefs)
-        except Exception:
-            preset_names = []
-
-        if preset_names:
-            col = box.column(align=True)
-            for name in preset_names:
-                row2 = col.row(align=True)
-                op_load = row2.operator("kimodo.load_preset",   text=name, icon='IMPORT')
-                op_load.preset_name = name
-                op_del  = row2.operator("kimodo.delete_preset", text="",   icon='TRASH')
-                op_del.preset_name = name
-
-        # File export / import
-        row = box.row(align=True)
-        row.operator("kimodo.export_preset_file", text="Export to File", icon='EXPORT')
-        row.operator("kimodo.import_preset_file", text="Import from File", icon='IMPORT')
-
-
-# ---------------------------------------------------------------------------
 # Panel 4: Help / About
 # ---------------------------------------------------------------------------
 
@@ -741,11 +646,6 @@ class KIMODO_PT_Help(KIMODO_PanelBase, Panel):
         col.label(text="   (model loads once, stays loaded)")
         col.separator()
         col.label(text="3. Enter prompt → Generate Motion")
-        col.label(text="4. In Retarget tab, Pick source + target rigs")
-        col.label(text="5. Auto-Match → Apply Constraints")
-        col.label(text="6. If it does not match, manually add your control bones")
-        col.label(text="7. Click Apply Constraints")
-        col.label(text="8. Bake when satisfied")
         col.separator()
         col.label(text="Docs & Source:", icon='URL')
         col.label(text="github.com/nv-tlabs/kimodo")
@@ -759,7 +659,6 @@ _classes = [
     KIMODO_PT_Connection,
     KIMODO_PT_Generate,
     KIMODO_PT_Constraints,
-    KIMODO_PT_Retarget,
     KIMODO_PT_Help,
 ]
 

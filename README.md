@@ -115,22 +115,6 @@ Switch the **Generate** panel to **Timeline** mode for this. Each segment is an 
 <img width="2676" height="1181" alt="image" src="https://github.com/user-attachments/assets/a5d336e9-f32f-44c7-9aca-a09983e869d6" />
 
 
-### Retarget to your own rig
-
-After generating motion you can drive any armature from the Kimodo source:
-
-1. Open the **Retarget** panel.
-2. Set **Source** to `Kimodo_Source` and **Target** to your character rig.
-3. Click **Auto-Match Bones** — the addon fuzzy-matches Kimodo bone names against your rig.
-4. Review the mapping, enable/disable pairs, choose a retarget mode per bone. Its recommended to also adjust the scale of the armature to match your character and then applying it with CTRL+A.
-5. Choose the type of constraint the plugin should use, "Child of", "Copy Rotation" etc...
-6. Click **Apply Constraints** — Blender constraint drivers are added to your rig.
-7. Click **Bake & Remove Constraints** when you are happy — keyframes are baked onto your rig and all Kimodo constraints are removed, leaving a clean, self-contained animation.
-
-Use **Save / Load Preset** to store bone mappings for a rig and reuse them later.
-
-<img width="1233" height="839" alt="image" src="https://github.com/user-attachments/assets/d76290db-7662-4223-9cd6-7083f89b35ca" />
-
 ### Motion constraints
 
 Spatial goals can be given to Kimodo so the generated motion passes through specific positions:
@@ -158,7 +142,6 @@ To add a constraint:
 | **Connection** | Kimodo Python path, model selector, Start / Stop bridge |
 | **Generate** | Single Clip mode (one prompt, duration, seed) or Timeline mode (segment list, frame ranges) — one Generate Motion button either way |
 | **Motion Constraints** | Spatial waypoints for the generated motion |
-| **Retarget** | Bone mapping, Apply Constraints, Bake |
 | **Help** | Quick-start checklist, VRAM tip |
 
 ---
@@ -172,10 +155,6 @@ To add a constraint:
 
 **CUDA out of memory**
 - Use a shorter duration or fewer segments.
-
-**Retargeted rig is in the wrong pose**
-- Try a different retarget mode per bone (Copy Rotation vs Copy Transforms vs Child Of).
-- Make sure the source and target armatures are both in their rest pose / have the same pose before trying the retargeting, and have scale applied on the armature.
 
 **Frames from imorted animation dont match**
 - Kimodo generates at exactly 30 FPS. Use the **Set to 30 FPS** button that appears in the Generate panel when your scene is at a different frame rate.
@@ -193,8 +172,7 @@ To add a constraint:
 | `properties.py` | All `bpy.props` scene settings |
 | `panels.py` | N-panel UI |
 | `constraints.py` | Converts Blender constraint markers to Kimodo JSON |
-| `retarget.py` | Applies / bakes retargeting constraints |
-| `ui_list.py` | UIList helper for the bone mapping panel |
+| `ui_list.py` | UIList helper for generation history |
 | `setup_operator.py` | One-click auto-installer for Kimodo and all dependencies |
 
 ---

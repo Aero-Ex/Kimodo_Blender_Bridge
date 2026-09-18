@@ -1,6 +1,6 @@
 """
 Kimodo Blender Bridge — Properties
-All bpy.props definitions: addon preferences, scene-level settings, bone mapping.
+All bpy.props definitions: addon preferences, scene-level settings.
 """
 
 import bpy
@@ -207,63 +207,6 @@ class KIMODO_HistoryEntry(PropertyGroup):
 
 
 # ---------------------------------------------------------------------------
-# Bone mapping item (one row in the UIList)
-# ---------------------------------------------------------------------------
-
-def _on_inherit_rotation_update(self, context):
-    """Push this entry's inherit-rotation override onto the target bone immediately."""
-    arm = context.scene.kimodo.target_armature
-    if not arm or not self.target_bone:
-        return
-    bone = arm.data.bones.get(self.target_bone)
-    if bone is not None:
-        try:
-            bone.use_inherit_rotation = self.inherit_rotation
-        except Exception:
-            pass
-
-
-class KIMODO_BoneMappingItem(PropertyGroup):
-    """A single source → target bone pair for retargeting."""
-    source_bone: StringProperty(
-        name="Source Bone",
-        description="Bone name in the Kimodo-generated armature",
-        default="",
-    )
-    target_bone: StringProperty(
-        name="Target Bone",
-        description="Bone name in your target armature",
-        default="",
-    )
-    enabled: BoolProperty(
-        name="Enabled",
-        description="Include this bone in retargeting",
-        default=True,
-    )
-    retarget_mode: EnumProperty(
-        name="Mode",
-        description="How this bone pair is driven",
-        items=[
-            ("COPY_ROTATION",    "Copy Rotation",    "Copy only rotation; root bone also gets Copy Location"),
-            ("COPY_TRANSFORMS",  "Copy Transforms",  "Copy location + rotation + scale together"),
-            ("CHILD_OF",         "Child Of",         "Full parent-child relationship; preserves rest-pose offset"),
-            ("CHILD_OF_ROTATION", "Child Of (Rotation)", "Child Of constraint with only rotation enabled (no location or scale)"),
-        ],
-        default="CHILD_OF",
-    )
-    inherit_rotation: BoolProperty(
-        name="Inherit Rotation",
-        description=(
-            "Override the target bone's 'Inherit Rotation' property. When unchecked, "
-            "this bone will not inherit rotation from its parent. Applied immediately "
-            "on toggle and again when you click Apply Constraints"
-        ),
-        default=True,
-        update=_on_inherit_rotation_update,
-    )
-
-
-# ---------------------------------------------------------------------------
 # Scene-level settings
 # ---------------------------------------------------------------------------
 
@@ -380,7 +323,6 @@ class KIMODO_SceneSettings(PropertyGroup):
         name="Reuse Armature",
         description=(
             "Apply generated motion to this armature instead of creating a new one. "
-            "Preserves retargeting constraints already pointing at it. "
             "Leave empty to always create a new armature."
         ),
         type=bpy.types.Object,
@@ -405,29 +347,6 @@ class KIMODO_SceneSettings(PropertyGroup):
     )
     # Which segment is currently being generated (for multi-generate progress)
     generating_segment_index: IntProperty(default=-1)
-
-    # --- Retargeting ---
-    source_armature: PointerProperty(
-        name="Source Armature",
-        description="The Kimodo-generated armature (imported from BVH)",
-        type=bpy.types.Object,
-        poll=lambda self, obj: obj.type == 'ARMATURE',
-    )
-    target_armature: PointerProperty(
-        name="Target Armature",
-        description="Your character's armature to drive with the motion",
-        type=bpy.types.Object,
-        poll=lambda self, obj: obj.type == 'ARMATURE',
-    )
-    bone_mappings: CollectionProperty(type=KIMODO_BoneMappingItem)
-    bone_mapping_index: IntProperty(default=0)
-    retarget_root_bone: StringProperty(
-        name="Root Bone (Target)",
-        description="Root / hip bone on the target armature (gets position + rotation)",
-        default="",
-    )
-    bake_start_frame: IntProperty(name="Start Frame", default=1, min=0)
-    bake_end_frame: IntProperty(name="End Frame", default=250, min=1)
 
     # --- Motion Constraints ---
     motion_constraints: CollectionProperty(type=KIMODO_ConstraintItem)
@@ -506,12 +425,6 @@ class KIMODO_SceneSettings(PropertyGroup):
         min=1,
     )
 
-    # Preset name for saving
-    preset_name: StringProperty(
-        name="Preset Name",
-        description="Name to save / load bone mapping preset",
-        default="my_rig",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -520,12 +433,6 @@ class KIMODO_SceneSettings(PropertyGroup):
 
 class KIMODO_AddonPreferences(AddonPreferences):
     bl_idname = __package__
-
-    saved_presets: StringProperty(
-        name="Saved Presets",
-        description="JSON blob of all saved bone-mapping presets",
-        default="{}",
-    )
 
     hf_token: StringProperty(
         name="HuggingFace Token",
@@ -605,7 +512,6 @@ def _reset_after_register():
 _classes = [
     KIMODO_MotionSegment,
     KIMODO_ConstraintItem,
-    KIMODO_BoneMappingItem,
     KIMODO_HistoryEntry,
     KIMODO_SceneSettings,
     KIMODO_AddonPreferences,

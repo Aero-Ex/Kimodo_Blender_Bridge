@@ -8,9 +8,6 @@ Features:
   • Generate motion from text prompts via a persistent bridge process
     (bridge_server.py, JSON over stdin/stdout — model loads once)
   • Automatic BVH import into Blender armature
-  • Custom bone-mapping retargeting to any existing rig
-  • Constraint-based retargeting with one-click bake
-  • Save / load bone mapping presets
 
 Requirements:
   • Blender 4.2+ (tested on 4.x and 5.x)

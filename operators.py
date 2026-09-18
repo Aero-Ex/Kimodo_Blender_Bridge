@@ -15,7 +15,6 @@ from bpy.types import Operator
 from bpy.props import StringProperty, BoolProperty, IntProperty
 
 from . import subprocess_client as sc
-from . import retarget as rt
 from . import constraints as cmod
 from . import setup_operator as so
 
@@ -567,7 +566,6 @@ class KIMODO_OT_ImportBVH(Operator):
             new_arm["kimodo_source"] = True
             new_arm["kimodo_creation_time"] = time.time()
             new_arm = _apply_to_existing_source(s, new_arm)
-            s.source_armature = new_arm
             s.reuse_armature = new_arm
             self.report({'INFO'}, f"Imported '{new_arm.name}' with {len(new_arm.data.bones)} bones")
         else:
@@ -582,284 +580,6 @@ class KIMODO_OT_ImportBVH(Operator):
         return {'RUNNING_MODAL'}
 
 
-
-
-# ---------------------------------------------------------------------------
-# Retargeting operators
-# ---------------------------------------------------------------------------
-
-class KIMODO_OT_AutoMapBones(Operator):
-    """Auto-match bone names between Kimodo source and target armature"""
-    bl_idname = "kimodo.auto_map_bones"
-    bl_label = "Auto-Match Bones"
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        if not s.source_armature:
-            self.report({'ERROR'}, "Set the Source Armature first.")
-            return {'CANCELLED'}
-        if not s.target_armature:
-            self.report({'ERROR'}, "Set the Target Armature first.")
-            return {'CANCELLED'}
-
-        pairs = rt.auto_build_mapping(s.source_armature, s.target_armature, s.model_type)
-        s.bone_mappings.clear()
-
-        for src, tgt in pairs:
-            item = s.bone_mappings.add()
-            item.source_bone = src
-            item.target_bone = tgt
-            item.enabled = True
-
-        self.report({'INFO'}, f"Auto-matched {len(pairs)} bone pairs")
-        return {'FINISHED'}
-
-
-class KIMODO_OT_AddBoneMapping(Operator):
-    """Add a new empty bone mapping row"""
-    bl_idname = "kimodo.add_bone_mapping"
-    bl_label = "Add Bone Pair"
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        item = s.bone_mappings.add()
-        item.source_bone = ""
-        item.target_bone = ""
-        item.enabled = True
-        s.bone_mapping_index = len(s.bone_mappings) - 1
-        return {'FINISHED'}
-
-
-class KIMODO_OT_RemoveBoneMapping(Operator):
-    """Remove the selected bone mapping row"""
-    bl_idname = "kimodo.remove_bone_mapping"
-    bl_label = "Remove Bone Pair"
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        idx = s.bone_mapping_index
-        if 0 <= idx < len(s.bone_mappings):
-            s.bone_mappings.remove(idx)
-            s.bone_mapping_index = max(0, idx - 1)
-        return {'FINISHED'}
-
-
-class KIMODO_OT_ApplyRetargeting(Operator):
-    """Apply Copy Rotation/Location constraints to drive target rig from Kimodo motion"""
-    bl_idname = "kimodo.apply_retargeting"
-    bl_label = "Apply Retargeting"
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        if not s.source_armature:
-            self.report({'ERROR'}, "Set Source Armature.")
-            return {'CANCELLED'}
-        if not s.target_armature:
-            self.report({'ERROR'}, "Set Target Armature.")
-            return {'CANCELLED'}
-        if not s.bone_mappings:
-            self.report({'ERROR'}, "No bone mappings defined. Use Auto-Match or add manually.")
-            return {'CANCELLED'}
-
-        pairs = [(item.source_bone, item.target_bone, item.enabled,
-                  item.retarget_mode, item.inherit_rotation)
-                 for item in s.bone_mappings]
-
-        n, warnings = rt.apply_retargeting_constraints(
-            s.source_armature, s.target_armature, pairs, s.retarget_root_bone
-        )
-
-        for w in warnings:
-            self.report({'WARNING'}, w)
-
-        self.report({'INFO'}, f"Applied retargeting constraints to {n} bones")
-        return {'FINISHED'}
-
-
-class KIMODO_OT_RemoveRetargeting(Operator):
-    """Remove all Kimodo retargeting constraints from target armature"""
-    bl_idname = "kimodo.remove_retargeting"
-    bl_label = "Remove Constraints"
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        if not s.target_armature:
-            self.report({'ERROR'}, "Set Target Armature.")
-            return {'CANCELLED'}
-        n = rt.remove_retargeting_constraints(s.target_armature)
-        self.report({'INFO'}, f"Removed {n} Kimodo constraints")
-        return {'FINISHED'}
-
-
-class KIMODO_OT_BakeRetargeting(Operator):
-    """Bake the retargeted animation into keyframes and remove constraints"""
-    bl_idname = "kimodo.bake_retargeting"
-    bl_label = "Bake Animation"
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        if not s.target_armature:
-            self.report({'ERROR'}, "Set Target Armature.")
-            return {'CANCELLED'}
-
-        success = rt.bake_retargeted_animation(
-            s.target_armature,
-            s.bake_start_frame,
-            s.bake_end_frame,
-        )
-        if success:
-            self.report({'INFO'}, "Animation baked successfully ✓")
-        else:
-            self.report({'ERROR'}, "Bake failed — check console for details")
-        return {'FINISHED'} if success else {'CANCELLED'}
-
-
-# ---------------------------------------------------------------------------
-# Preset operators
-# ---------------------------------------------------------------------------
-
-class KIMODO_OT_SavePreset(Operator):
-    """Save current bone mapping as a named preset"""
-    bl_idname = "kimodo.save_preset"
-    bl_label = "Save Preset"
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        prefs = context.preferences.addons[__package__].preferences
-        name = s.preset_name.strip()
-        if not name:
-            self.report({'ERROR'}, "Enter a preset name first.")
-            return {'CANCELLED'}
-
-        pairs = [{"src": item.source_bone, "tgt": item.target_bone,
-                  "en": item.enabled, "mode": item.retarget_mode,
-                  "inherit_rot": item.inherit_rotation}
-                 for item in s.bone_mappings]
-        rt.save_preset(prefs, name, pairs)
-        self.report({'INFO'}, f"Preset '{name}' saved ({len(pairs)} bone pairs)")
-        return {'FINISHED'}
-
-
-class KIMODO_OT_LoadPreset(Operator):
-    """Load a saved bone mapping preset"""
-    bl_idname = "kimodo.load_preset"
-    bl_label = "Load Preset"
-
-    preset_name: StringProperty()
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        prefs = context.preferences.addons[__package__].preferences
-        name = self.preset_name or s.preset_name.strip()
-
-        pairs = rt.load_preset(prefs, name)
-        if pairs is None:
-            self.report({'ERROR'}, f"Preset '{name}' not found.")
-            return {'CANCELLED'}
-
-        s.bone_mappings.clear()
-        for p in pairs:
-            item = s.bone_mappings.add()
-            item.source_bone     = p.get("src", "")
-            item.target_bone     = p.get("tgt", "")
-            item.enabled         = p.get("en", True)
-            item.retarget_mode   = p.get("mode", "COPY_ROTATION")
-            item.inherit_rotation = p.get("inherit_rot", True)
-
-        self.report({'INFO'}, f"Loaded preset '{name}' ({len(pairs)} bone pairs)")
-        return {'FINISHED'}
-
-
-class KIMODO_OT_DeletePreset(Operator):
-    """Delete a saved bone mapping preset"""
-    bl_idname = "kimodo.delete_preset"
-    bl_label = "Delete Preset"
-
-    preset_name: StringProperty()
-
-    def execute(self, context):
-        prefs = context.preferences.addons[__package__].preferences
-        name = self.preset_name
-        try:
-            presets = json.loads(prefs.saved_presets)
-            if name in presets:
-                del presets[name]
-                prefs.saved_presets = json.dumps(presets)
-                self.report({'INFO'}, f"Deleted preset '{name}'")
-            else:
-                self.report({'WARNING'}, f"Preset '{name}' not found")
-        except Exception as e:
-            self.report({'ERROR'}, str(e))
-        return {'FINISHED'}
-
-
-class KIMODO_OT_ExportPresetFile(Operator):
-    """Export the current bone mapping to a JSON file"""
-    bl_idname  = "kimodo.export_preset_file"
-    bl_label   = "Export Bone Map"
-
-    filepath:   StringProperty(subtype='FILE_PATH')
-    filename_ext = ".json"
-    filter_glob: StringProperty(default="*.json", options={'HIDDEN'})
-
-    def invoke(self, context, event):
-        s = context.scene.kimodo
-        self.filepath = (s.preset_name.strip() or "bone_map") + ".json"
-        context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        pairs = [{"src": item.source_bone, "tgt": item.target_bone,
-                  "en": item.enabled, "mode": item.retarget_mode,
-                  "inherit_rot": item.inherit_rotation}
-                 for item in s.bone_mappings]
-        try:
-            with open(self.filepath, "w", encoding="utf-8") as f:
-                json.dump(pairs, f, indent=2)
-            self.report({'INFO'}, f"Exported {len(pairs)} bone pairs to {self.filepath}")
-        except Exception as e:
-            self.report({'ERROR'}, f"Export failed: {e}")
-            return {'CANCELLED'}
-        return {'FINISHED'}
-
-
-class KIMODO_OT_ImportPresetFile(Operator):
-    """Import a bone mapping from a JSON file"""
-    bl_idname  = "kimodo.import_preset_file"
-    bl_label   = "Import Bone Map"
-
-    filepath:   StringProperty(subtype='FILE_PATH')
-    filename_ext = ".json"
-    filter_glob: StringProperty(default="*.json", options={'HIDDEN'})
-
-    def invoke(self, context, event):
-        context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
-
-    def execute(self, context):
-        s = context.scene.kimodo
-        try:
-            with open(self.filepath, "r", encoding="utf-8") as f:
-                pairs = json.load(f)
-            if not isinstance(pairs, list):
-                self.report({'ERROR'}, "File does not contain a JSON array.")
-                return {'CANCELLED'}
-        except Exception as e:
-            self.report({'ERROR'}, f"Import failed: {e}")
-            return {'CANCELLED'}
-
-        s.bone_mappings.clear()
-        for p in pairs:
-            item = s.bone_mappings.add()
-            item.source_bone     = p.get("src", "")
-            item.target_bone     = p.get("tgt", "")
-            item.enabled         = p.get("en", True)
-            item.retarget_mode   = p.get("mode", "COPY_ROTATION")
-            item.inherit_rotation = p.get("inherit_rot", True)
-
-        self.report({'INFO'}, f"Imported {len(pairs)} bone pairs from {self.filepath}")
-        return {'FINISHED'}
 
 
 # ---------------------------------------------------------------------------
@@ -1414,7 +1134,6 @@ class KIMODO_OT_ImportBVHAtFrame(Operator):
             new_arm["kimodo_creation_time"] = time.time()
             s = context.scene.kimodo
             new_arm = _apply_to_existing_source(s, new_arm)
-            s.source_armature = new_arm
             s.reuse_armature = new_arm
 
         return {'FINISHED'}
@@ -1667,7 +1386,7 @@ class KIMODO_OT_AddConstraint(Operator):
         # ---------------------------------------------------------------
         # fullbody needs an armature, not an Empty.
         # Priority: (1) active object is an armature → use it directly
-        #           (2) source_armature exists → duplicate it as a reference
+        #           (2) a Kimodo-generated armature exists → duplicate it as a reference
         #           (3) no armature available → create Empty but warn loudly
         # ---------------------------------------------------------------
         if ctype == 'fullbody':
@@ -1696,7 +1415,7 @@ class KIMODO_OT_AddConstraint(Operator):
 
         Logic:
         - Case 1: an armature is selected AND active is an armature → use active armature
-        - Case 2: no armature in the selection set → duplicate source_armature for posing
+        - Case 2: no armature in the selection set → duplicate latest Kimodo armature for posing
         - Case 3: otherwise → error
         """
         active = context.active_object
@@ -1709,9 +1428,15 @@ class KIMODO_OT_AddConstraint(Operator):
                 f"Pose it at frame {cur_frame} to define the keyframe.")
             return active
 
-        # Case 2: no armature selected at all → duplicate source_armature for posing
-        if not has_selected_armature and s.source_armature:
-            return self._duplicate_source_for_posing(context, s, cur_frame)
+        # Case 2: no armature selected at all → duplicate latest Kimodo armature for posing
+        if not has_selected_armature:
+            kimodo_arms = [
+                obj for obj in context.scene.objects
+                if obj.type == 'ARMATURE' and obj.get("kimodo_source")
+            ]
+            if kimodo_arms:
+                source = max(kimodo_arms, key=lambda o: o.get("kimodo_creation_time", 0.0))
+                return self._duplicate_source_for_posing(context, source, cur_frame)
 
         # Case 3: nothing to work with
         self.report({'ERROR'},
@@ -1720,8 +1445,8 @@ class KIMODO_OT_AddConstraint(Operator):
             "(b) generate a motion first so a source armature exists to duplicate.")
         return None
         
-    def _duplicate_source_for_posing(self, context, s, cur_frame):
-        """Duplicate source_armature and freeze its pose at cur_frame.
+    def _duplicate_source_for_posing(self, context, kimodo_arm, cur_frame):
+        """Duplicate a Kimodo armature and freeze its pose at cur_frame.
 
         Plain duplication inherits the source's BVH F-curves, so any bone the
         user rotates without explicitly keyframing gets reverted to the
@@ -1739,8 +1464,8 @@ class KIMODO_OT_AddConstraint(Operator):
         context.view_layer.update()
 
         bpy.ops.object.select_all(action='DESELECT')
-        s.source_armature.select_set(True)
-        context.view_layer.objects.active = s.source_armature
+        kimodo_arm.select_set(True)
+        context.view_layer.objects.active = kimodo_arm
         bpy.ops.object.duplicate(linked=False)
         dup = context.active_object
 
@@ -2229,17 +1954,6 @@ _classes = [
     KIMODO_OT_ImportBVH,
     KIMODO_OT_ImportBVHAtFrame,
     KIMODO_OT_PickLatestKimodoArmature,
-    KIMODO_OT_AutoMapBones,
-    KIMODO_OT_AddBoneMapping,
-    KIMODO_OT_RemoveBoneMapping,
-    KIMODO_OT_ApplyRetargeting,
-    KIMODO_OT_RemoveRetargeting,
-    KIMODO_OT_BakeRetargeting,
-    KIMODO_OT_SavePreset,
-    KIMODO_OT_LoadPreset,
-    KIMODO_OT_DeletePreset,
-    KIMODO_OT_ExportPresetFile,
-    KIMODO_OT_ImportPresetFile,
     # Segment operators
     KIMODO_OT_SelectSegment,
     KIMODO_OT_RemoveSegmentByIndex,

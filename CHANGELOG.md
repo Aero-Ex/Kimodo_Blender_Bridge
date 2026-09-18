@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Removed
+
+- **Retarget section removed entirely**: the Retarget panel, its operators (auto-match, bone pairs, apply/remove, bake, presets incl. file import/export), its scene properties, its UIList, and the `retarget.py` module are gone. Motion Constraints full-body posing now duplicates the latest Kimodo-generated armature found in the scene instead of a stored source armature.
+
 ## [1.5.8] — 2026-08-20
 
 ### Changed
@@ -127,13 +133,13 @@
 
 ### Fixed
 
-- **Rest-orientation-invariant joint rotations**: Joint rotation extraction now accounts for the rest orientation of each bone, so retargeted motion is correct even when the source armature is not in a canonical rest pose (previously rotations could be offset by the bone's rest transform).
+- **Rest-orientation-invariant joint rotations**: Joint rotation extraction now accounts for the rest orientation of each bone, so generated motion is correct even when the Kimodo armature is not in a canonical rest pose (previously rotations could be offset by the bone's rest transform).
 - **Hand / foot effector constraints targeting hips**: Hand and foot spatial constraints were incorrectly sending the effector target to the hips bone instead of the wrist/ankle end-effector. Fixed so each constraint type maps to the correct bone.
 - **Full-Body constraint re-enabled**: The Full-Body pose constraint (pose a reference armature to set a full joint-pose keyframe) was inadvertently disabled; it is now re-enabled. Duplicate pose markers are also frozen to prevent accidental edits.
 
 ### Changed
 
-- **Default retarget mode is now "Child Of"**: New bone-mapping entries default to the *Child Of* constraint instead of *Copy Rotation*, which produces better full-body results out of the box for most rigs.
+- **Default constraint mode is now "Child Of" (removed feature)**: New entries defaulted to the *Child Of* constraint instead of *Copy Rotation*, which produced better full-body results out of the box for most rigs.
 
 ### Added
 
@@ -206,6 +212,6 @@
 - Initial release.
 - Subprocess bridge architecture (Blender ↔ bridge_server.py over stdin/stdout JSON).
 - BVH import into `Kimodo_Source` armature.
-- Constraint-based retargeting with bake.
-- Bone mapping presets (save/load).
+- Constraint-driven animation baking.
+- Bone-map presets (save/load) — removed in a later version.
 - Motion constraints: Root XZ, Hand, Foot waypoints.

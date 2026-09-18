@@ -130,8 +130,7 @@ EFFECTOR_BONE = {
 EFFECTOR_IDX = {
     'left_hand': 13, 'right_hand': 19, 'left_foot': 24, 'right_foot': 28,
 }
-# Fallback rest-pose offset from Hips to each effector in Kimodo Y-up meters
-# (used when no source_armature is available to read true offsets from).
+# Rest-pose offset from Hips to each effector in Kimodo Y-up meters.
 # Values approximate an adult SOMA T-pose: arms out sideways at shoulder height,
 # feet straight below the hips at ground level (hips ~0.9 m up).
 DEFAULT_TPOSE_OFFSETS = {
@@ -303,18 +302,29 @@ def get_bone_world_position(
     return blender_to_kimodo_pos(world_pos)
 
 
+def _find_kimodo_armature(scene: bpy.types.Scene) -> bpy.types.Object | None:
+    """Latest Kimodo-generated armature in the scene, if any."""
+    candidates = [
+        o for o in getattr(scene, "objects", [])
+        if getattr(o, "type", None) == 'ARMATURE' and o.get("kimodo_source")
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda o: o.get("kimodo_creation_time", 0.0))
+
+
 def get_effector_tpose_offset(
     scene: bpy.types.Scene,
     effector_type: str,
 ) -> tuple[float, float, float]:
     """Rest-pose offset from Hips to the named end-effector, in Kimodo Y-up meters.
 
-    Reads bone rest positions from scene.kimodo.source_armature when present so
-    the offset matches the actual character proportions. Falls back to a
-    hard-coded adult SOMA T-pose when no source armature is set.
+    Reads bone rest positions from the latest Kimodo-generated armature when
+    present so the offset matches the actual character proportions. Falls back
+    to a hard-coded adult SOMA T-pose when none is in the scene.
     """
-    arm = getattr(getattr(scene, "kimodo", None), "source_armature", None)
-    if arm and arm.type == 'ARMATURE':
+    arm = _find_kimodo_armature(scene)
+    if arm is not None:
         bones = arm.data.bones
         hips = (bones.get("Hips") or bones.get("hips")
                 or bones.get("Hip") or bones.get("pelvis") or bones.get("Pelvis"))
